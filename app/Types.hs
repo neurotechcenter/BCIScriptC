@@ -1,16 +1,20 @@
 module Types where
 
+import Text.Parsec
+
 data BCProgram = BCProgram [BCDef]
 
-data BCDef = BCActorDef BCActor | BCOnEventDef BCOnEvent | BCProcDef BCProc | BCFuncDef BCFunc | BCEventDef BCEvent | BCStateDef BCState
+data BCDef = BCActorDef BCActor | BCOnEventDef BCOnEvent | BCProcDef BCProc | BCFuncDef BCFunc | BCEventDef BCEvent | BCStateDef BCState | BCVarDef BCVariable
 
 data BCActor = BCActor BCIdentifier [BCDef]
 
 data BCEvent = BCEvent String
 
-data BCState = StateBool | StateU8 | StateI8 | StateU32 | StateI32
+data BCState = BCState BCIdentifier StateType
 
-data BCVariable = BCVariable BCIdentifier BCVarType
+data StateType = StateBool | StateU8 | StateI8 | StateU32 | StateI32
+
+data BCVariable = BCVariable BCIdentifier BCVarType BCExpr
 
 data BCFunc = BCFunc BCIdentifier BCArgDefs BCExpr
 
@@ -22,6 +26,7 @@ data BCSequence = BCSequence [BCStatement]
 
 data BCStatement = BCStatementCall BCCall | BCStatementControl BCControl
 
+
 -- A statement that applies a procedure or builtin function.
 data BCCall = BCCall BCIdentifier [BCArg] 
 
@@ -30,8 +35,8 @@ data BCRepeat = BCRepeat BCExpr BCSequence
 data BCWhile = BCWhile BCExpr BCSequence
 data BCIf = BCIf BCExpr BCSequence
 -- elif(b) {do} is syntactically equal to else { if(b) { do }}
-data BCIfElse = BCIfElseNode BCExpr BCSequence BCIfElse
-	      | BCIfElseEnd BCSequence
+data BCIfElse = BCIfElse BCExpr BCSequence [BCElseIf] BCSequence 
+data BCElseIf = BCExpr BCSequence
  
 
 -- Anything that is expected to have a value immediately, that is, a literal or a variable.
@@ -44,7 +49,7 @@ data BCExpr = BCExprNode BCExpr BCOperator BCExpr
             | BCExprFinal BCValue
 	    | BCExprFuncCall BCStatement
 
-data BCOperator = BCAdd | BCSubtract | BCMult | BCDiv
+data BCOperator = BCAdd | BCSubtract | BCMult | BCDiv | BCAnd | BCOr | BCNot
 
 data BCArgDefs = BCArgDefs [BCArgDef]
 data BCArgDef = BCArgDef BCIdentifier BCArgType 
@@ -55,7 +60,7 @@ data BCVarType = BoolType | IntType | NumType
 data BCLiteral = BCLiteralNumber BCNumber | BCLiteralBool BCBool
 data BCNumber = BCNumberInt BCInt | BCNumberFloat BCFloat
 
-data BCIdentifier = BCIdentifier String
+data BCIdentifier = BCIdentifier String SourcePos
 data BCInt = BCInt Integer
 data BCFloat = BCDouble Double
 data BCBool = BCBool Bool

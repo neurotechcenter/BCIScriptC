@@ -2,6 +2,7 @@ module Parse where
 
 import Text.Parsec
 import Types
+import Types (BCIdentifier(BCIdentifier))
 
 
 bcProgram :: Parsec String st BCProgram
@@ -14,6 +15,7 @@ bcDef = BCActorDef   <$> bcActor
      <|>BCFuncDef    <$> bcFunc
      <|>BCEventDef   <$> bcEvent
      <|>BCStateDef   <$> bcState
+     <|>BCVarDef     <$> bcVar
      <?> "declaration"
 
 bcActor :: Parsec String st BCActor
@@ -31,13 +33,54 @@ bcProc = BCProc <$> (string "proc") <* necessarySpaces *> bcIdentifier <* (lexem
 bcFunc :: Parsec String st BCFunc
 bcFunc = BCFunc <$> (string "func") <* necessarySpaces *> bcIdentifier <* (lexeme $ char ':') *> bcArgDefs <* (lexeme $ string "->") *> bcArgType <* (lexeme $ char "=") *> bcExpression <* (lexeme $ char ';')
 
+bcState :: Parsec String st BCState
+bcState = BCState <$> (string "state" <* necessarySpaces) *> bcIdentifier <*> bcStateType
+
+bcStateType :: Parsec String st StateType
+bcStateType = StateBool <$> str "boolean"
+           <|>StateU8   <$> str "u8"
+	   <|>StateI8   <$> str "i8"
+	   <|>StateU32  <$> str "u32"
+	   <|>StateI32  <$> str "i32"
+	   <?> "State type (boolean, u8, i8, u32, i32)"
+	   where str = try $ lexeme string
+
+bcVar :: Parsec String st BCVariable
+bcVar = BCVariable <$> (string "var" necessarySpaces) *> bcIdentifier <* (lexeme $ char ':') *> bcVarType <*> bcExpression
+
+bcVarType :: Parsec String st BCVariable
+bcVarType = BoolType <$ str "boolean" <|>
+            NumType <$ str "float" <|>
+	    NumType <$ str "num"  <|>
+	    IntType <$ str "int"
+	    <?> "variable type (boolean, float, int)"
 bcBlockSequence :: Parsec String st BCSequence
 bcBlockSequence = BCSequence <$> (openBlock *> (many bcStatement)) <* closeBlock
 
+bcStatement :: Parsec String st BCStatement
+bcStatement = BCStatementControl <$> try bcControl <|> (BCStatementCall <$> BCCall) <?> "statement"
+
+bcControl :: Parsec String st BCControl
+bcControl = BCControlLoop <$> bcRepeat
+	 <|>BCControlWhile <$> bcWhile
+	 <|>BCControlIf <$> bcIf
+	 <|>BCControlIfElse<$> bcIfElse
+
+bcRepeat :: Parsec String st BCControl
+bcRepeat = BCLoop <$> (string "repeat" <*> necessarySpaces) *> bcExpression <*> bcBlockSequence
+
+bcWhile :: Parsec String st BCWhile
+bcWhile = BCWhile <$> (string "while" <*> necessarySpaces) *> bcExpression <*> bcBlockSequence
+
+bcIf :: Parsec String st BCIf
+bcIf = BCIf <$> ((lexeme $ string "if") <*> necessarySpaces) *> bcExpression <*> bcBlockSequence <*> (many bcElseIf) <*> ((lexeme $ string "else") <*> necessarySpaces) <*> bcBlockSequence 
+bcElseIf :: Parsec String st BCElseIf
+bcElseIf = BCElseIf <$> (string "else if" <*> necessarySpaces) *> bcExpression <*> bcBlockSequence
+
 
 -- A call to a procedure or function
-bcStatement :: Parsec String st BCStatement
-bcStatement = BCStatement <$> (bcIdentifier <* necessarySpaces) <*> (between (lexeme $ char '(') (lexeme $ char ')') bcArguments) <* (lexeme $ char ';')
+bcCall :: Parsec String st BCStatement
+bcCall = BCStatementCall <$> (bcIdentifier <* necessarySpaces) <*> (parens bcArguments) <* (lexeme $ char ';')
 
 bcArgDefs :: Parsec String st BCArgDefs
 bcArgDefs = BCArgDefs <$> sepBy bcArgDef (lexeme $ char ',')
@@ -59,7 +102,8 @@ bcArg :: Parsec String st BCArg
 bcArg = BCArgExpr <$> bcExpr <|> (BCArgStr <$> bcString)
 
 bcExpression :: Parsec String st BCExpr
-bcExpression = BCExprNode <$> bcExpression <*> bcOperator <*> bcExpression
+bcExpression = BCExprNode <$> try (bcExpression <*> bcOperator <*> bcExpression)
+	    <|> try $ bcOperator bcExpression --Unary operation, only for boolean inverse
 	    <|> BCExprFinal <$> bcLiteral
 	    <|> BCExprFinal <$> bcIdentifier
 	    <|> BCExprFuncCall <$> bcStatement
@@ -86,22 +130,24 @@ bcNumber :: Parsec String st BCNumber
 bcNumber = BCNumber <$> try bcFloat <|> bcInt
 
 bcFloat :: Parsec String st BCFloat
-bcFloat = BCFloat <$> readFloat $ many bcDigit <*> char '.' <*> many bcDigit
+bcFloat = BCFloat <$> readFloat $ lexeme (many bcDigit <*> char '.' <*> many bcDigit)
 
 bcInt :: Parsec String st BCInt
-bcInt = BCInt <$> read $ many bcDigit
+bcInt = BCInt <$> read $ lexeme $ many bcDigit
 
 bcBool :: Parsec String st BCBool
-bcBool = BCBool <$> read $ (string "true")<|> (string "false")
+bcBool = BCBool <$> read $ (lexeme $ string "true")<|> (lexeme $ string "false")
 
 bcIdentifier :: Parsec String st BCIdentifier
-bcIdentifier = BCIdentifier <$> lexeme $ letter <*> many $ letter <|> digit
+bcIdentifier = BCIdentifier <$> (lexeme $ (letter <*> (many $ letter) <|> digit)) <*> getPosition
 
 bcOperator :: Parsec String st BCOperator
-bcOperator = getOperator $ oneOf "+-*/"
+bcOperator = getOperator $ lexeme $ oneOf "+-*/"
 		where getOperator x | x == '+' = BCAdd
 				    | x == '-' = BCSubtract
 				    | x == '*' = BCMult
 				    | x == '/' = BCDivide
+				    | x == '&' = BCAnd
+				    | x == '|' = BCOr
 
 
