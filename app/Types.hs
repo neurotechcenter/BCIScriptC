@@ -8,7 +8,7 @@ data BCDef = BCActorDef BCActor | BCOnEventDef BCOnEvent | BCProcDef BCProc | BC
 
 data BCActor = BCActor BCIdentifier [BCDef]
 
-data BCEvent = BCEvent String
+data BCEvent = BCEvent BCIdentifier
 
 data BCState = BCState BCIdentifier StateType
 
@@ -52,15 +52,18 @@ data BCExpr = BCExprNode BCExpr BCOperator BCExpr
 data BCOperator = BCAdd | BCSubtract | BCMult | BCDiv | BCAnd | BCOr | BCNot
 
 data BCArgDefs = BCArgDefs [BCArgDef]
-data BCArgDef = BCArgDef BCIdentifier BCArgType 
+data BCArgDef = BCArgDef BCIdentifier BCVarType 
 
-data BCArgType = BCArgVarType BCVarType | BCArgStringType
+data BCArgType = BCArgType BCVarType | BCArgStringType
 data BCVarType = BoolType | IntType | NumType
 
 data BCLiteral = BCLiteralNumber BCNumber | BCLiteralBool BCBool
 data BCNumber = BCNumberInt BCInt | BCNumberFloat BCFloat
 
 data BCIdentifier = BCIdentifier String SourcePos
+instance Eq BCIdentifier where
+    (==) (BCIdentifier name _) (BCIdentifier name2 _) = name == name2
+    
 data BCInt = BCInt Integer
 data BCFloat = BCDouble Double
 data BCBool = BCBool Bool

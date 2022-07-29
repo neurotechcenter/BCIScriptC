@@ -88,11 +88,10 @@ bcArgDefs = BCArgDefs <$> sepBy bcArgDef (lexeme $ char ',')
 bcArgDef :: Parsec String st BCArgDef
 bcArgDef = BCArgDef <$> bcIdentifier <* (lexeme $ char ':') *> bcArgType
 
-bcArgType :: Parsec String st BCArgType
-bcArgType = 		   BoolType <$ lexeme $ string "bool"
-			<|> IntType <$ lexeme $ string "int"
-			<|> NumType <$ lexeme $ string "float"
-			<|> string  <$ lexeme $ string "string"
+bcArgType :: Parsec String st BCVarType
+bcArgType = 		   BoolType <$ lexeme (string "bool")
+			<|> IntType <$ lexeme (string "int")
+			<|> NumType <$ lexeme (string "float")
 			<?> "argument type"
 
 bcArguments :: Parsec String st [BCArg]
