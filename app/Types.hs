@@ -2,6 +2,23 @@ module Types where
 
 import Text.Parsec
 
+-- Verification Types:
+
+
+data Result = Success | Err String | Warn String deriving (Eq, Ord, Show)
+
+--The identifier list on func is for the captured variables within each expression.
+data DefType = Actor [Signature] | OnEvent | Event | Proc [BCVarType] | Func [BCVarType] BCVarType [BCIdentifier] | State | Variable BCVarType | Any
+
+data Signature = Signature BCIdentifier DefType
+instance Eq Signature where -- Signature is equal when identifier is equal, definition type does not matter.
+    (==) (Signature id _) (Signature id2 _) = id == id2
+
+
+
+-- AST types
+
+
 data BCProgram = BCProgram [BCDef]
 
 data BCDef = BCActorDef BCActor | BCOnEventDef BCOnEvent | BCProcDef BCProc | BCFuncDef BCFunc | BCEventDef BCEvent | BCStateDef BCState | BCVarDef BCVariable
@@ -14,7 +31,7 @@ data BCState = BCState BCIdentifier StateType
 
 data StateType = StateBool | StateU8 | StateI8 | StateU32 | StateI32
 
-data BCVariable = BCVariable BCIdentifier BCVarType BCExpr
+data BCVariable = BCVariable BCIdentifier BCVarType BCLiteral
 
 data BCFunc = BCFunc BCIdentifier BCArgDefs BCExpr
 
@@ -24,12 +41,12 @@ data BCOnEvent = BCOnEvent BCIdentifier BCSequence
 
 data BCSequence = BCSequence [BCStatement]
 
-data BCStatement = BCStatementCall BCCall | BCStatementControl BCControl
+data BCStatement = BCStatementCall BCCall | BCStatementControl BCControl | BCStatementAssign
 
 
 -- A statement that applies a procedure or builtin function.
 data BCCall = BCCall BCIdentifier [BCArg] 
-
+data BCAssign = BCAssign BCIdentifier BCExpr
 data BCControl = BCControlLoop BCRepeat | BCControlWhile BCWhile | BCControlIf BCIf | BCControlIfElse BCIfElse
 data BCRepeat = BCRepeat BCExpr BCSequence
 data BCWhile = BCWhile BCExpr BCSequence
@@ -43,19 +60,26 @@ data BCElseIf = BCExpr BCSequence
 data BCValue = BCValueLiteral BCLiteral | BCValueIdentifier BCIdentifier
 
 -- Anything that can evaluate to a value in order to be passed as a function argument
-data BCArg = BCArgExpr BCExpr | BCArgStr BCString
+data BCArg = BCArg BCExpr
+
+data TypedExpr = TypedExpr BCExpr BCVarType
 
 data BCExpr = BCExprNode BCExpr BCOperator BCExpr
+	    | BCExprUnaryNode BCUnaryOperator BCExpr
+	    | BCExprFuncCall BCFuncCall
             | BCExprFinal BCValue
-	    | BCExprFuncCall BCStatement
 
-data BCOperator = BCAdd | BCSubtract | BCMult | BCDiv | BCAnd | BCOr | BCNot
+data BCFuncCall = BCFuncCall BCIdentifier [BCArg]
+
+data BCOperator = BCAdd | BCSubtract | BCMult | BCDiv | BCAnd | BCOr 
+
+data BCUnaryOperator = BCNot
 
 data BCArgDefs = BCArgDefs [BCArgDef]
 data BCArgDef = BCArgDef BCIdentifier BCVarType 
 
 data BCArgType = BCArgType BCVarType | BCArgStringType
-data BCVarType = BoolType | IntType | NumType
+data BCVarType = BoolType | IntType | NumType | ConstBoolType | ConstIntType | ConstNumType
 
 data BCLiteral = BCLiteralNumber BCNumber | BCLiteralBool BCBool
 data BCNumber = BCNumberInt BCInt | BCNumberFloat BCFloat

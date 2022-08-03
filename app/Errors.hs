@@ -13,6 +13,9 @@ genericError pos m = "Error at " ++ show pos ++ ": " ++ m
 alreadyDefined :: BCIdentifier -> BCIdentifier -> String
 alreadyDefined def prev = genericNamedError (getsourcepos def) "Identifier" (getidname def) ("\"" ++ (getidname prev) ++ "\" already defined here: " ++ (show $ getsourcepos prev))   
 
+alreadyDefinedBuiltin :: BCIdentifier -> String
+alreadyDefinedBuiltin def = genericNamedError (getsourcepos def) "Identifier" (getidname def) "is a builtin procedure and cannot be redefined"
+
 notDefined :: BCIdentifier -> String
 notDefined def = genericNamedError (getsourcepos def) "Identifier" (getidname def) "Not defined."
 
@@ -26,13 +29,21 @@ onEventDefOutsideActor :: SourcePos -> String -> String
 onEventDefOutsideActor pos name = genericNamedError pos "OnEvent" name "Event listeners must be defined inside an actor"
 
 eventDefOutsideActor :: SourcePos -> String -> String
-onEventDefOutsideActor pos name = genericNamedError pos "Event" name "Events must be defined inside an actor"
+eventDefOutsideActor pos name = genericNamedError pos "Event" name "Events must be defined inside an actor"
 
 illegalDef :: BCDef -> String
 illegalDef (BCActorDef (BCActor (BCIdentifier name pos) _)) = actorDefInActor pos name 
 illegalDef (BCStateDef (BCState (BCIdentifier name pos) _)) = stateDefInActor pos name 
 illegalDef (BCOnEventDef (BCOnEvent (BCIdentifier name pos) _)) = onEventDefOutsideActor pos name
 illegalDef (BCEventDef (BCEvent (BCIdentifier name pos))) = eventDefOutsideActor pos name
+
+circularDef :: BCIdentifier -> BCIdentifier -> String
+circularDef id1 id2 = "Error binding function " ++ (getidname id1) ++ ", defined at "
+    ++ (show $ getsourcepos id1) ++ ", circular definition with " ++ (getidname id2)
+    ++ ", defined at " ++ (show $ getsourcepos id2)
+
+recursiveExpression :: BCIdentifier -> String
+recursiveExpression id = genericError (getsourcepos id) "For technical reasons, recursive expressions are prohibited."
 
 getsourcepos (BCIdentifier _ pos) = pos
 getidname (BCIdentifier name _) = name

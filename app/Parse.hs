@@ -46,7 +46,7 @@ bcStateType = StateBool <$> str "boolean"
 	   where str = try $ lexeme string
 
 bcVar :: Parsec String st BCVariable
-bcVar = BCVariable <$> (string "var" necessarySpaces) *> bcIdentifier <* (lexeme $ char ':') *> bcVarType <*> bcExpression
+bcVar = BCVariable <$> (string "var" necessarySpaces) *> bcIdentifier <* (lexeme $ char ':') *> bcVarType <*> bcValue
 
 bcVarType :: Parsec String st BCVariable
 bcVarType = BoolType <$ str "boolean" <|>
