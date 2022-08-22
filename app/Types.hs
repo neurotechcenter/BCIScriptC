@@ -2,6 +2,11 @@ module Types where
 
 import Text.Parsec
 
+-- Syntax
+binaryOperators = "+-*/&|"
+unaryOperators = "!"
+
+
 -- Verification Types:
 
 
@@ -53,7 +58,7 @@ data BCWhile = BCWhile BCExpr BCSequence
 data BCIf = BCIf BCExpr BCSequence
 -- elif(b) {do} is syntactically equal to else { if(b) { do }}
 data BCIfElse = BCIfElse BCExpr BCSequence [BCElseIf] BCSequence 
-data BCElseIf = BCExpr BCSequence
+data BCElseIf = BCElseIf BCExpr BCSequence
  
 
 -- Anything that is expected to have a value immediately, that is, a literal or a variable.
@@ -62,16 +67,27 @@ data BCValue = BCValueLiteral BCLiteral | BCValueIdentifier BCIdentifier
 -- Anything that can evaluate to a value in order to be passed as a function argument
 data BCArg = BCArg BCExpr
 
-data TypedExpr = TypedExpr BCExpr BCVarType
+data TypedExpr = TypedExpr BCExpr BCVarType [Result]
 
 data BCExpr = BCExprNode BCExpr BCOperator BCExpr
-	    | BCExprUnaryNode BCUnaryOperator BCExpr
+	    | BCExprUnaryNode BCOperator BCExpr
 	    | BCExprFuncCall BCFuncCall
             | BCExprFinal BCValue
 
 data BCFuncCall = BCFuncCall BCIdentifier [BCArg]
 
-data BCOperator = BCAdd | BCSubtract | BCMult | BCDiv | BCAnd | BCOr 
+data BCOperator = BCOperatorBinary BCBinaryOperator SourcePos | BCOperatorUnary BCUnaryOperator SourcePos
+instance Show BCOperator where
+    show (BCOperatorBinary (BCAdd) _) = "+"
+    show (BCOperatorBinary (BCSubtract) _) = "-"
+    show (BCOperatorBinary (BCMult) _) = "*"
+    show (BCOperatorBinary (BCDiv) _) = "/"
+    show (BCOperatorBinary (BCAnd) _) = "&"
+    show (BCOperatorBinary (BCOr) _) = "|"
+    show (BCOperatorUnary (BCNot) _) = "!"
+
+
+data BCBinaryOperator = BCAdd | BCSubtract | BCMult | BCDiv | BCAnd | BCOr 
 
 data BCUnaryOperator = BCNot
 
@@ -79,8 +95,11 @@ data BCArgDefs = BCArgDefs [BCArgDef]
 data BCArgDef = BCArgDef BCIdentifier BCVarType 
 
 data BCArgType = BCArgType BCVarType | BCArgStringType
-data BCVarType = BoolType | IntType | NumType | ConstBoolType | ConstIntType | ConstNumType
-
+data BCVarType = BoolType | IntType | NumType 
+instance Show BCVarType where
+    show BoolType = "boolean"
+    show IntType = "integer"
+    show NumType = "float"
 data BCLiteral = BCLiteralNumber BCNumber | BCLiteralBool BCBool
 data BCNumber = BCNumberInt BCInt | BCNumberFloat BCFloat
 
@@ -89,6 +108,6 @@ instance Eq BCIdentifier where
     (==) (BCIdentifier name _) (BCIdentifier name2 _) = name == name2
     
 data BCInt = BCInt Integer
-data BCFloat = BCDouble Double
+data BCFloat = BCFloat Double
 data BCBool = BCBool Bool
 data BCString = BCString String

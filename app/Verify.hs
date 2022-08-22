@@ -9,7 +9,7 @@ import Control.Applicative (liftA, liftA2)
 import GHC.Read (list)
 import Data.Function ((&))
 import GHC.Cmm.CLabel (ConInfoTableLocation(DefinitionSite))
-import GHC.Cmm (CmmNode(args))
+import GHC.Cmm (CmmNode(args, res))
 import GHC.CmmToAsm.AArch64.Instr (x0)
 import GHC.Data.BooleanFormula (BooleanFormula)
 import GHC.Plugins (nameUnique)
@@ -20,7 +20,7 @@ import GHC.Driver.Main (batchMsg)
 
 --  Section: Verification functions 
 
-verify program = program & verifyAllDeclarations & validateDefinitions
+
 
 
 --  Section: Verification of declarations
@@ -96,15 +96,14 @@ valDef (BCVarDef (BCVariable name vtype expr)) sigs =
 valDef (BCFuncDef (BCFunc name args ret expr)) sigs =
     concatMap valExpr (map argunwrap args) 
     ++ tupleApplyConcat (flip assertDefined sigs, flip (assertNoCircularDef name) sigs) (getCapturedNames expr)
-    ++ valExpr expr
+    ++ valAndMatchExpr ret expr
 
 valDef (BCOnEventDef (BCOnEvent eventName sequence)) sigs = 
     assertDefined eventName
     ++ valSequence sequence
 
 valDef (BCProcDef (BCProc name (BCArgDefs args) sequence)) sigs =
-    concatMap valExpr (map argunwrap args)
-    ++ valSequence sequence (sigs + )
+    valSequence sequence (sigs (++) $ argsToSigs args)
 
 valSequence :: BCSequence -> [Signature] -> [Result]
 valSequence (BCSequence statements) sigs =
@@ -112,8 +111,7 @@ valSequence (BCSequence statements) sigs =
 
 valStatement :: BCStatement -> [Signature] -> [Result]
 valStatement (BCStatementCall callname args) sigs = 
-    assertDefined callname sigs ++
-    valCall args sigs
+    runIfDef callname sigs (valProcCall args)
 
 valStatement (BCStatementControl control) sigs = valControl control sigs
 
@@ -122,30 +120,85 @@ valStatement (BCStatementAssign assign) sigs = valAssign assign sigs
 valAssign :: BCAssign -> [Signature] -> [Result]
 valAssign (BCAssign id expr) sigs = --if id is bound to a variable, ensure that the righthand expression matches its type, otherwise return error message
     runIfVar id sigs (flip valAndMatchExpr expr <*> getVarType) -- Inside the parenthesis is an expression that composes a function which takes a signature and returns [Result]
-    where getVarType (Signature name (Variable var)) = var
+    where getVarType (Signature name (Variable vtype)) = vtype
 
 valControl :: BCControl -> [Signature] -> [Result]
 valControl (BCRepeat expr) sigs = 
     valAndMatchExpr IntType expr
 
+-- Validates a procedure call. The identifier is the name of the called procedure within the statement it is being called from, and the signature is the signature of the target procedure
+valProcCall :: BCIdentifier -> [BCArg] -> Signature -> [Result]
+valProcCall id args (Signature name (Proc argtypes)) = if length args /= length argtypes then
+    [Err $ differentNumberOfArguments (getsourcepos id) name argtypes args]
+    else zipWith (valAndMatchExpr) args argtypes -- make sure args match expected types
+
 valAndMatchExpr :: VarType -> BCExpr -> [Result] -- Make sure expression is valid and matches a type, otherwise return error messages.
 valAndMatchExpr mtype expr = runRight (matchExprTypes mtype) (valExpr expr)
 
-matchExprTypes :: BCIdentifier -> VarType -> TypedExpr -> [Result]
-matchExprTypes id vtype (TypedExpr _ etype) = 
-    if matchTypes vtype etype then [Success] else [Err $ genericError (getsourcepos id) " expected " ++ (getTypename vtype) ++ " but given " ++ (getTypename etype)]
-    where getTypename (NumType) = "Number"; getTypename (BoolType) = "Boolean"; getTypename (IntType) = "Integer"
+matchExprTypes :: BCIdentifier -> VarType -> (VarType, [Result]) -> [Result]
+matchExprTypes id vtype (etype, results) = 
+    if matchTypes vtype etype then results ++ [Success] else results ++ [Err $ genericError (getsourcepos id) " expected " ++ (getTypename vtype) ++ " but given " ++ (getTypename etype)]
+    where getTypename (NumType) = "Number"; getTypename (BoolType) = "Boolean"; getTypename (IntType) = "Integer";
 
 matchTypes a a = True
 matchTypes NumType IntType = True
 matchTypes a b = False
 
+data OpType = NumOp | BoolOp
 
-valExpr :: BCExpr -> Either [Result] TypedExpr
+valExpr :: BCExpr -> [Signature] -> Either [Result] (VarType, [Result])
+valExpr (BCExprNode e1 op e2) sigs = case opType op of
+    NumOp -> totalNumType (valExpr e1) (valExpr e2)
+    BoolOp -> valBoolTypes (valExpr e1) (valExpr e2) 
 
--- Validates a procedure call.
-valCall :: BCIdentifier -> [BCArg] -> [Signature] -> [Result]
+opType :: BCOperator -> OpType
+opType op | (BCOperatorBinary BCAdd _) = NumOp
+	  | (BCOperatorBinary BCSubtract _) = NumOp
+	  | (BCOperatorBinary BCMult _) = NumOp
+	  | (BCOperatorBinary BCDiv _) = NumOp
+	  | (BCOperatorBinary BCAnd _) = BoolOp
+	  | (BCOperatorBinary BCOr _) = BoolOp
 
+type ValExpResult = Either [Result] (VarType, [Result]) --validates that types in an integer expression make sense
+totalNumType :: BCOperator -> ValExpResult -> ValExpResult -> ValExpResult --Mixing num and int results in num
+totalNumType p (Right (IntType, results1)) (Right (IntType, results2)) = (IntType, results1 ++ results2)
+totalNumType p (Right (NumType, results1)) (Right (NumType, results2)) = (NumType, results1 ++ results2)
+totalNumType p (Right (NumType, results1)) (Right (IntType, results2)) = (NumType, results1 ++ results2)
+totalNumType p (Right (IntType, results1)) (Right (NumType, results2)) = (NumType, results1 ++ results2)
+totalNumType p (Right (type1, results)) (Right (type2, results2)) = results ++ results2 ++ [Err $ genericError (getOpSourcePos op) ("Cannot apply operator " ++ (show op) ++ " to types " ++ (show type1) ++ " and " ++ (show type2) ++ ".") ]-- fails if either is a bool type
+    where getOpSourcePos (BCOperatorBinary _ pos) = pos
+totalNumType p (Left results) (Left results2) = results ++ results2 -- fails if any subexpression fails
+totalNumType p _ (Left results)= results
+totalNumType p (Left results) _ = results
+
+valBoolTypes :: BCOperator -> ValExpResult -> ValExprResult -> ValExpResult -- validates that types in a boolean expression match
+valBoolTypes op (Right (BoolType, res1)) (Right (BoolType, res1)) = (BoolType, res1 ++ res2)
+valBoolTypes op (Right (type1, res1)) (Right (type2, res1)) = res1 ++ res2 ++ [Err $ genericError (getOpSourcePos op) ("Cannot apply operator " ++ (show op) ++ " to types " ++ (show type1) ++ " and " (show type2) ++ ".")]
+    where getOpSourcePos (BCOperatorBinary _ pos) = pos
+valBoolTypes op (Left res1) (Left res2) = res1 ++ res2
+valBoolTypes op _ (Left res) = res
+valBoolTypes op (Left res) _ = res
+
+valExpr (BCExprUnaryNode op e1) sigs = (BoolType, valAndMatchExpr BoolType e1)
+
+valExpr (BCExprFuncCall call) sigs = valFuncCall call sigs 
+
+valFuncCall :: BCFuncCall -> [Signature] -> ValExpResult
+valFuncCall (BCFuncCall id args) = 
+    case getSignature id sigs of 
+	Just (Signature fid (Func fargs ret _)) -> if length args /= length fargs then [Err $ differentNumberOfArguments (getsourcepos fid) id fargs args]
+	    else (ret, zipWith (valAndMatchExpr) args fargs)
+	_ -> [Err $ genericError (getsourcepos id) ((idunwrap id) ++ " is not defined, or it is not a function")]
+
+valExpr (BCExprFinal value) sigs = valValue value sigs
+
+valValue :: BCValue -> [Signature] -> ValExpResult
+valValue (BCValueLiteral (BCLiteral (BCLiteralNumber (BCNumberInt num)))) sigs = (IntType, [Success])
+valValue (BCValueLiteral (BCLiteral (BCLiteralNumber (BCNumberFloat num)))) sigs = (NumType, [Success])
+valValue (BCValueLiteral (BCLiteral (BCLiteralBool b))) sigs = (BoolType, [Success])
+valValue (BCValueIdentifier id) sigs = case getSignature id sigs of
+    Just (Signature vid (Variable vtype)) -> (vtype, [Success])
+    _ -> [Err $ genericError (getsourcepos id) ((idunwrap id) ++ " is not defined, or it is not a variable")]
 
 -- Section: Utility functions 
 
@@ -197,7 +250,12 @@ assertIsVar id sigs = if getSignature id sigs == (Signature id (Variable _)) the
 runIfVar :: BCIdentifier -> [Signature] -> (Signature -> [Result]) -> [Result]
 runIfVar id sigs f = case getSignature id sigs of 
     Just (Signature id (Variable vtype)) -> f $ Signature id (Variable vtype) 
-    _ -> [Err $ genericError (getsourcepos id) ((idunwrap id) ++ " is not a variable")]
+    _ -> [Err $ genericError (getsourcepos id) ((idunwrap id) ++ " is not defined, or it is not a variable")]
+
+runIfProc :: BCIdentifier -> [Signature] -> (Signature -> [Result]) -> [Result]
+runIfProc id sigs f = case getSignature id sigs of
+    Just (Signature id (Proc args)) -> f $ Signature id (Proc args)
+    _ -> [Err $ genericError (getsourcepos id) ((idunwrap id) ++ " is not defined, or it is not a procedure")]
 
 
 
@@ -215,7 +273,7 @@ getSignatureCapturedNames id sigs = case (getSignature id sigs) of
     _ -> []
 
 getSignature :: BCIdentifier -> [Signature] -> Maybe Signature
-getSignature id sigs = find (eqSig id) sigs
+getSignature id sigs = find (eqSig id) $ sigs ++ builtins
 
 
 eqSig :: BCIdentifier -> Signature -> Boolean

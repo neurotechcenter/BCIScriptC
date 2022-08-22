@@ -45,5 +45,9 @@ circularDef id1 id2 = "Error binding function " ++ (getidname id1) ++ ", defined
 recursiveExpression :: BCIdentifier -> String
 recursiveExpression id = genericError (getsourcepos id) "For technical reasons, recursive expressions are prohibited."
 
+differentNumberOfArguments :: SourcePos -> String -> [a] -> [b] -> String
+differentNumberOfArguments pos name expectedargs givenargs = 
+    genericError pos $ "Call to " ++ name ++ " expects " ++ (show $ length expectedargs) ++ ", but was given " ++ (show $ length givenargs) ++ "."
+
 getsourcepos (BCIdentifier _ pos) = pos
 getidname (BCIdentifier name _) = name
