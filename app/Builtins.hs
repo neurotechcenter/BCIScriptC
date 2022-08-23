@@ -24,8 +24,8 @@ builtinSub = [
     ]
 
 
-mkprocsig :: String -> [BCVarType] -> Signature
+mkprocsig :: String -> [BCDataType] -> Signature
 mkprocsig name args = Signature (BCIdentifier name (newPos "builtins" 1 1)) (Proc args)
 
-mkfuncsig :: String -> [BCVarType] -> BCVarType -> Signature
+mkfuncsig :: String -> [BCDataType] -> BCDataType -> Signature
 mkfuncsig name args ret = Signature (BCIdentifier name (newPos "builtins" 1 1)) (Func args ret [])

@@ -48,7 +48,7 @@ liftMFirstArg f x y = liftM2 f x (pure y) --wack monad logic
 genExpr :: BCExpr -> String
 genExpr (BCExprNode ex1 op ex2) = "(" ++ (genExpr ex1) ++ (show op) ++ (genExpr ex2) ++ ")"
 genExpr (BCExprUnaryNode op expr) = "(" ++ (show op) ++ (genExpr expr) ++ ")"
-genExpr (BCExprFuncCall (BCFuncCall id args)) = "(" ++ "UNIMPLEMENTED" ++ ")"
+genExpr (BCExprFuncCall (BCCall id args)) = "(" ++ "UNIMPLEMENTED" ++ ")"
 genExpr (BCExprFinal val) = "(" ++ (getVal val) ++ ")"
 
 getVal (BCValueLiteral (BCLiteralBool (BCBool b))) = map toLower $ show b
@@ -97,10 +97,11 @@ getSType StateI8 = "BCIState::i8"
 getSType StateU32 = "BCIState::u32"
 getSType StateI32 = "BCIState::i32"
 
-getVType :: BCVarType -> String
+getVType :: BCDataType -> String
 getVType BoolType = "bool"
 getVType IntType = "int"
 getVType NumType = "double"
+getVType StringType = "string"
 
 actorify :: [String] -> [String] --In an actor, function calls are to the actor itself, so we need to add dots. 
 actorify [] = []

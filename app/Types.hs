@@ -1,7 +1,7 @@
 module Types where
 
 import Text.Parsec
-
+import Text.Read
 -- Syntax
 binaryOperators = "+-*/&|"
 unaryOperators = "!"
@@ -13,15 +13,14 @@ unaryOperators = "!"
 data Result = Success | Err String | Warn String deriving (Eq, Ord, Show)
 
 --The identifier list on func is for the captured variables within each expression.
-data DefType = Actor [Signature] | OnEvent | Event | Proc [BCVarType] | Func [BCVarType] BCVarType [BCIdentifier] | State | Variable BCVarType | Any
+data DefType = Actor [Signature] | OnEvent | Event | Proc [BCDataType] | Func [BCDataType] BCDataType [BCIdentifier] | State StateType | Variable BCDataType | BCDataType BCLiteral | Any
 
 data Signature = Signature BCIdentifier DefType
 instance Eq Signature where -- Signature is equal when identifier is equal, definition type does not matter.
     (==) (Signature id _) (Signature id2 _) = id == id2
 
+-- AST Types
 
-
--- AST types
 
 
 data BCProgram = BCProgram [BCDef]
@@ -36,9 +35,9 @@ data BCState = BCState BCIdentifier StateType
 
 data StateType = StateBool | StateU8 | StateI8 | StateU32 | StateI32
 
-data BCVariable = BCVariable BCIdentifier BCVarType BCLiteral
+data BCVariable = BCVariable BCIdentifier BCDataType BCLiteral
 
-data BCFunc = BCFunc BCIdentifier BCArgDefs BCExpr
+data BCFunc = BCFunc BCIdentifier BCArgDefs BCDataType BCExpr
 
 data BCProc = BCProc BCIdentifier BCArgDefs BCSequence
 
@@ -46,8 +45,7 @@ data BCOnEvent = BCOnEvent BCIdentifier BCSequence
 
 data BCSequence = BCSequence [BCStatement]
 
-data BCStatement = BCStatementCall BCCall | BCStatementControl BCControl | BCStatementAssign
-
+data BCStatement = BCStatementCall BCCall | BCStatementControl BCControl | BCStatementAssign BCAssign
 
 -- A statement that applies a procedure or builtin function.
 data BCCall = BCCall BCIdentifier [BCArg] 
@@ -67,14 +65,14 @@ data BCValue = BCValueLiteral BCLiteral | BCValueIdentifier BCIdentifier
 -- Anything that can evaluate to a value in order to be passed as a function argument
 data BCArg = BCArg BCExpr
 
-data TypedExpr = TypedExpr BCExpr BCVarType [Result]
+
+data TypedExpr = TypedExpr BCExpr BCDataType [Result]
 
 data BCExpr = BCExprNode BCExpr BCOperator BCExpr
 	    | BCExprUnaryNode BCOperator BCExpr
-	    | BCExprFuncCall BCFuncCall
+	    | BCExprFuncCall BCCall
             | BCExprFinal BCValue
 
-data BCFuncCall = BCFuncCall BCIdentifier [BCArg]
 
 data BCOperator = BCOperatorBinary BCBinaryOperator SourcePos | BCOperatorUnary BCUnaryOperator SourcePos
 instance Show BCOperator where
@@ -92,22 +90,24 @@ data BCBinaryOperator = BCAdd | BCSubtract | BCMult | BCDiv | BCAnd | BCOr
 data BCUnaryOperator = BCNot
 
 data BCArgDefs = BCArgDefs [BCArgDef]
-data BCArgDef = BCArgDef BCIdentifier BCVarType 
+data BCArgDef = BCArgDef BCIdentifier BCDataType 
 
-data BCArgType = BCArgType BCVarType | BCArgStringType
-data BCVarType = BoolType | IntType | NumType 
-instance Show BCVarType where
+data BCDataType = BoolType | IntType | NumType | StringType  
+instance Show BCDataType where
     show BoolType = "boolean"
     show IntType = "integer"
-    show NumType = "float"
-data BCLiteral = BCLiteralNumber BCNumber | BCLiteralBool BCBool
+    show NumType = "number"
+    show StringType = "string"
+data BCLiteral = BCLiteralNumber BCNumber | BCLiteralBool BCBool | BCLiteralString BCString
 data BCNumber = BCNumberInt BCInt | BCNumberFloat BCFloat
 
 data BCIdentifier = BCIdentifier String SourcePos
 instance Eq BCIdentifier where
     (==) (BCIdentifier name _) (BCIdentifier name2 _) = name == name2
-    
-data BCInt = BCInt Integer
-data BCFloat = BCFloat Double
-data BCBool = BCBool Bool
-data BCString = BCString String
+instance Show BCIdentifier where
+    show (BCIdentifier name _) = name
+
+data BCInt = BCInt Integer deriving Read
+data BCFloat = BCFloat Double deriving Read
+data BCBool = BCBool Bool deriving Read
+data BCString = BCString String deriving Read
