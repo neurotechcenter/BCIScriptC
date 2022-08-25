@@ -12,7 +12,12 @@ builtins = [
     mkprocsig "changeCostume" [IntType],
     mkprocsig "nextCostume" [],
     mkfuncsig "truncate" [NumType] IntType,
-    mkprocsig "displayStr" [StringType]
+    mkprocsig "displayStr" [StringType],
+    mkfuncsig "randomDigit" [] IntType,
+    mkfuncsig "intToString" [IntType] StringType,
+    mkprocsig "setSize" [NumType],
+    mkprocsig "displayAsText" [],
+    mkprocsig "displayAsImage" []
     ]
 
 
@@ -20,7 +25,12 @@ builtinSub :: [(String, String)]
 builtinSub = [
     ("moveTo", "callingActor.setPositionX($0); callingActor.setPositionY($1)"),
     ("truncate", "((int) $0)"),
-    ("displayStr", "callingActor.displayString(\"$0\")")
+    ("displayStr", "callingActor.changeGraphic(\"$0\")"),
+    ("randomDigit", "callingActor.randomDigit()"),
+    ("intToString", "std::to_string($0)"),
+    ("setSize", "callingActor.Resize($0,$0)"),
+    ("displayAsText", "callingActor.setRenderType(RenderType::Text)"),
+    ("displayAsImage", "callingActor.setRenderType(RenderType::Image)")
     ]
 
 

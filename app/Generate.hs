@@ -5,6 +5,7 @@ import Builtins (builtinSub)
 import Data.List
 import Control.Monad
 import Data.Char (toLower)
+import Types (BCStatement(BCStatementControl), BCControl (BCControlIf, BCControlLoop), BCIfElse (BCIfElse))
 
 generateProgram :: BCProgram -> String
 generateProgram (BCProgram defs) = 
@@ -37,10 +38,47 @@ genDef (BCVarDef (BCVariable id vtype val)) =
 genDef _ = "" --Not implemented yet
 
 genStatement :: BCStatement -> String
-genStatement (BCStatementCall (BCCall id args)) = 
+genStatement (BCStatementCall (BCCall id args) _) = 
     case liftMFirstArg subBuiltIn (liftM snd (find (eqFst $ show id) builtinSub)) args of --Only checks builtins for now, because procedures aren't implemented yet
 	Just x -> x
 	Nothing -> ""
+
+genStatement (BCStatementControl (BCControlIf (BCIf expr seq)) _) = 
+    ".addIfBlock(" ++ (exprLambda expr) ++ ")" +>
+    (genSequence seq) +>
+    ".closeStatement()"
+
+genStatement (BCStatementControl (BCControlWaitForProcess) _ )=
+    ".addWaitForProcessBlock()"
+
+genStatement (BCStatementControl (BCControlWait (BCWait expr)) _ ) = 
+    ".addTimerBlock(" ++ (exprLambda expr) ++ ")"
+
+genStatement (BCStatementControl (BCControlIfElse (BCIfElse expr seq elifs elseq)) _) = 
+    ".addIfElseBlock(" ++ (exprLambda expr) ++ ")" +>
+    (genSequence seq) +>
+    ".closeStatement()" +>
+    (foldl' (+>) "" (map genIfElse elifs)) +>
+    (genSequence elseq) +>
+    ".closeStatement()"
+    where genIfElse (BCElseIf ex seq) = genSequence seq +> "closeStatement()"  
+
+genStatement (BCStatementControl (BCControlLoop (BCRepeat expr seq)) _) = 
+    ".addLoopBlock(" ++ (exprLambda expr) ++ ")" +>
+    (genSequence seq) +>
+    ".closeStatement()"
+
+genStatement (BCStatementControl (BCControlWhile (BCWhile expr seq)) _) =
+    ".addWhileLoopBlock(" ++ (exprLambda expr) ++ ")" +>
+    (genSequence seq) +>
+    ".closeStatement()"
+
+
+exprLambda :: BCExpr -> String
+exprLambda e = "[](Actor& callingActor){ return " ++ (genExpr e) ++ ";}"  
+
+genSequence :: BCSequence -> String
+genSequence (BCSequence states) = (foldl' (+>) "" (map genStatement states))
 
 liftMFirstArg :: Monad m => (a -> b -> c) -> m a -> b -> m c --for when only the first argument of a function is monadic, lifts the function so it takes one monadic arg 
 liftMFirstArg f x y = liftM2 f x (pure y) --wack monad logic

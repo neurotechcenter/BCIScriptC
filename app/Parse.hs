@@ -6,7 +6,7 @@ import Types (BCIdentifier(BCIdentifier))
 import Control.Monad
 
 bcProgram :: Parsec String st BCProgram
-bcProgram = BCProgram <$> many bcDef
+bcProgram = BCProgram <$> (whitespace *> many bcDef <* eof)
 
 bcDef :: Parsec String st BCDef
 bcDef = BCActorDef   <$> bcActor 
@@ -50,7 +50,7 @@ bcStateType = StateBool <$ (str "boolean")
 	   where str = try . lexeme . string
 
 bcVar :: Parsec String st BCVariable
-bcVar = BCVariable <$> (string "var" *> necessarySpaces *> bcIdentifier) <*> (lexeme $ char ':' *> bcVarType) <*> bcLiteral
+bcVar = BCVariable <$> (string "var" *> necessarySpaces *> bcIdentifier) <*> ((lexeme $ char ':') *> bcVarType <* (lexeme $ char '=')) <*> (bcLiteral <* semicolon) 
 
 bcVarType :: Parsec String st BCDataType
 bcVarType = BoolType <$ str "boolean" <|>
@@ -64,13 +64,21 @@ bcBlockSequence :: Parsec String st BCSequence
 bcBlockSequence = BCSequence <$> (openBlock *> (many bcStatement) <* closeBlock)
 
 bcStatement :: Parsec String st BCStatement
-bcStatement = (BCStatementControl <$> try bcControl) <|> (BCStatementCall <$> bcCall) <?> "statement"
+bcStatement = (BCStatementControl <$> try bcControl <*> getPosition) <|> (BCStatementCall <$> bcCall <*> getPosition) <?> "statement"
 
 bcControl :: Parsec String st BCControl
 bcControl = BCControlLoop <$> bcRepeat
 	 <|>BCControlWhile <$> bcWhile
 	 <|>BCControlIfElse<$> try bcIfElse
 	 <|>BCControlIf <$> bcIf
+	 <|>BCControlWait <$> bcWait
+	 <|>bcWaitForProcess
+
+bcWait :: Parsec String st BCWait
+bcWait = BCWait <$> (lexeme (string "wait") *> (char '(' *> bcExpression <* (lexeme $ char ')') <* (lexeme $ char ';'))) 
+
+bcWaitForProcess :: Parsec String st BCControl
+bcWaitForProcess = BCControlWaitForProcess <$ (string "process" <* semicolon) 
 
 bcRepeat :: Parsec String st BCRepeat
 bcRepeat = BCRepeat <$> (string "repeat" *> necessarySpaces *> bcExpression) <*> bcBlockSequence

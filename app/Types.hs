@@ -45,13 +45,14 @@ data BCOnEvent = BCOnEvent BCIdentifier BCSequence
 
 data BCSequence = BCSequence [BCStatement]
 
-data BCStatement = BCStatementCall BCCall | BCStatementControl BCControl | BCStatementAssign BCAssign
+data BCStatement = BCStatementCall BCCall SourcePos | BCStatementControl BCControl SourcePos | BCStatementAssign BCAssign SourcePos
 
 -- A statement that applies a procedure or builtin function.
 data BCCall = BCCall BCIdentifier [BCArg] 
 data BCAssign = BCAssign BCIdentifier BCExpr
-data BCControl = BCControlLoop BCRepeat | BCControlWhile BCWhile | BCControlIf BCIf | BCControlIfElse BCIfElse
+data BCControl = BCControlLoop BCRepeat | BCControlWhile BCWhile | BCControlIf BCIf | BCControlIfElse BCIfElse | BCControlWaitForProcess | BCControlWait BCWait
 data BCRepeat = BCRepeat BCExpr BCSequence
+data BCWait = BCWait BCExpr
 data BCWhile = BCWhile BCExpr BCSequence
 data BCIf = BCIf BCExpr BCSequence
 -- elif(b) {do} is syntactically equal to else { if(b) { do }}

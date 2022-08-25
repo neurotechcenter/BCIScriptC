@@ -24,6 +24,11 @@ extra-source-files: CHANGELOG.md
 executable BCIScriptC
     main-is:          Main.hs
 
+    ld-options: 
+        -fPIC
+
+    ghc-options:
+        -dynamic
     -- Modules included in this executable, other than Main.
     -- other-modules:
 
@@ -37,4 +42,4 @@ executable BCIScriptC
     hs-source-dirs:   app
     default-language: Haskell2010
     other-modules:
-        Types, Verify, Parse, Errors
+        Types, Verify, Parse, Errors, Builtins, Generate
