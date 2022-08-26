@@ -97,7 +97,7 @@ bcElseIf = BCElseIf <$> (string "else if" *> necessarySpaces *> bcExpression) <*
 
 -- A call to a procedure or function
 bcCall :: Parsec String st BCCall
-bcCall = BCCall <$> (bcIdentifier) <*> (parens bcArguments <* semicolon)
+bcCall = BCCall <$> (bcIdentifier) <*> (parens bcArguments)
 
 bcArgDefs :: Parsec String st BCArgDefs
 bcArgDefs = BCArgDefs <$> sepBy bcArgDef (lexeme $ char ',')
@@ -119,11 +119,11 @@ bcArg :: Parsec String st BCArg
 bcArg = BCArg <$> bcExpression
 
 bcExpression :: Parsec String st BCExpr
-bcExpression = try bcBinaryExpr
-	    <|> try bcUnaryExpr
-	    <|> BCExprFinal <$> BCValueLiteral <$> bcLiteral
+bcExpression =	BCExprFinal <$> BCValueLiteral <$> bcLiteral
 	    <|> BCExprFinal <$> BCValueIdentifier <$> bcIdentifier
-	    <|> BCExprFuncCall <$> bcCall
+	   -- <|> BCExprFuncCall <$> bcCall
+	    <|>	try bcBinaryExpr
+	    <|> try bcUnaryExpr
 	    <?> "expression"
 
 bcBinaryExpr :: Parsec String st BCExpr
@@ -169,7 +169,7 @@ bcInt :: Parsec String st BCInt
 bcInt = BCInt <$> (liftM read (lexeme (many bcDigit)))
 
 bcBool :: Parsec String st BCBool
-bcBool = BCBool <$> liftM read (lexeme $ string "true") <|> BCBool <$> liftM read (lexeme $ string "false")
+bcBool = BCBool <$> (True <$ (lexeme $ string "true")) <|> BCBool <$> (False <$ (lexeme $ string "false"))
 
 bcIdentifier :: Parsec String st BCIdentifier
 bcIdentifier = BCIdentifier <$> (lexeme $ (:) <$> letter <*> (many (letter <|> digit))) <*> getPosition
