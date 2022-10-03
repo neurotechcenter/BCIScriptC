@@ -43,28 +43,28 @@ data BCProc = BCProc BCIdentifier BCArgDefs BCSequence
 
 data BCOnEvent = BCOnEvent BCIdentifier BCSequence
 
-data BCSequence = BCSequence [BCStatement]
+data BCSequence = BCSequence [BCStatement] deriving Show
 
-data BCStatement = BCStatementCall BCCall SourcePos | BCStatementControl BCControl SourcePos | BCStatementAssign BCAssign SourcePos
+data BCStatement = BCStatementCall BCCall SourcePos | BCStatementControl BCControl SourcePos | BCStatementAssign BCAssign SourcePos deriving Show
 
 -- A statement that applies a procedure or builtin function.
-data BCCall = BCCall BCIdentifier [BCArg] 
-data BCAssign = BCAssign BCIdentifier BCExpr
-data BCControl = BCControlLoop BCRepeat | BCControlWhile BCWhile | BCControlIf BCIf | BCControlIfElse BCIfElse | BCControlWaitForProcess | BCControlWait BCWait
-data BCRepeat = BCRepeat BCExpr BCSequence
-data BCWait = BCWait BCExpr
-data BCWhile = BCWhile BCExpr BCSequence
-data BCIf = BCIf BCExpr BCSequence
+data BCCall = BCCall BCIdentifier [BCArg] deriving (Show) 
+data BCAssign = BCAssign BCIdentifier BCExpr deriving Show
+data BCControl = BCControlLoop BCRepeat | BCControlWhile BCWhile | BCControlIf BCIf | BCControlIfElse BCIfElse | BCControlWaitForProcess | BCControlWait BCWait deriving Show
+data BCRepeat = BCRepeat BCExpr BCSequence deriving Show
+data BCWait = BCWait BCExpr deriving Show
+data BCWhile = BCWhile BCExpr BCSequence deriving Show
+data BCIf = BCIf BCExpr BCSequence deriving Show
 -- elif(b) {do} is syntactically equal to else { if(b) { do }}
-data BCIfElse = BCIfElse BCExpr BCSequence [BCElseIf] BCSequence 
-data BCElseIf = BCElseIf BCExpr BCSequence
+data BCIfElse = BCIfElse BCExpr BCSequence [BCElseIf] BCSequence deriving Show 
+data BCElseIf = BCElseIf BCExpr BCSequence deriving Show
  
 
 -- Anything that is expected to have a value immediately, that is, a literal or a variable.
-data BCValue = BCValueLiteral BCLiteral | BCValueIdentifier BCIdentifier
+data BCValue = BCValueLiteral BCLiteral | BCValueIdentifier BCIdentifier deriving (Show)
 
 -- Anything that can evaluate to a value in order to be passed as a function argument
-data BCArg = BCArg BCExpr
+data BCArg = BCArg BCExpr deriving (Show)
 
 
 data TypedExpr = TypedExpr BCExpr BCDataType [Result]
@@ -72,7 +72,7 @@ data TypedExpr = TypedExpr BCExpr BCDataType [Result]
 data BCExpr = BCExprNode BCExpr BCOperator BCExpr
 	    | BCExprUnaryNode BCOperator BCExpr
 	    | BCExprFuncCall BCCall
-            | BCExprFinal BCValue
+            | BCExprFinal BCValue  deriving (Show)
 
 
 data BCOperator = BCOperatorBinary BCBinaryOperator SourcePos | BCOperatorUnary BCUnaryOperator SourcePos
@@ -99,8 +99,8 @@ instance Show BCDataType where
     show IntType = "integer"
     show NumType = "number"
     show StringType = "string"
-data BCLiteral = BCLiteralNumber BCNumber | BCLiteralBool BCBool | BCLiteralString BCString
-data BCNumber = BCNumberInt BCInt | BCNumberFloat BCFloat
+data BCLiteral = BCLiteralNumber BCNumber | BCLiteralBool BCBool | BCLiteralString BCString deriving Show
+data BCNumber = BCNumberInt BCInt | BCNumberFloat BCFloat deriving Show
 
 data BCIdentifier = BCIdentifier String SourcePos
 instance Eq BCIdentifier where
@@ -108,7 +108,7 @@ instance Eq BCIdentifier where
 instance Show BCIdentifier where
     show (BCIdentifier name _) = name
 
-data BCInt = BCInt Integer deriving Read
-data BCFloat = BCFloat Double deriving Read
-data BCBool = BCBool Bool deriving Read
-data BCString = BCString String deriving Read
+data BCInt = BCInt Integer deriving (Read, Show)
+data BCFloat = BCFloat Double deriving (Read, Show)
+data BCBool = BCBool Bool deriving (Read, Show)
+data BCString = BCString String deriving (Read, Show)

@@ -4,6 +4,7 @@ import Text.Parsec
 import Types
 import Types (BCIdentifier(BCIdentifier))
 import Control.Monad
+import Text.Parsec.Expr (buildExpressionParser)
 
 bcProgram :: Parsec String st BCProgram
 bcProgram = BCProgram <$> (whitespace *> many bcDef <* eof)
@@ -71,14 +72,6 @@ bcControl = BCControlLoop <$> bcRepeat
 	 <|>BCControlWhile <$> bcWhile
 	 <|>BCControlIfElse<$> try bcIfElse
 	 <|>BCControlIf <$> bcIf
-	 <|>BCControlWait <$> bcWait
-	 <|>bcWaitForProcess
-
-bcWait :: Parsec String st BCWait
-bcWait = BCWait <$> (lexeme (string "wait") *> (char '(' *> bcExpression <* (lexeme $ char ')') <* (lexeme $ char ';'))) 
-
-bcWaitForProcess :: Parsec String st BCControl
-bcWaitForProcess = BCControlWaitForProcess <$ (string "process" <* semicolon) 
 
 bcRepeat :: Parsec String st BCRepeat
 bcRepeat = BCRepeat <$> (string "repeat" *> necessarySpaces *> bcExpression) <*> bcBlockSequence
@@ -97,7 +90,7 @@ bcElseIf = BCElseIf <$> (string "else if" *> necessarySpaces *> bcExpression) <*
 
 -- A call to a procedure or function
 bcCall :: Parsec String st BCCall
-bcCall = BCCall <$> (bcIdentifier) <*> (parens bcArguments)
+bcCall = BCCall <$> (bcIdentifier) <*> (parens bcArguments) <* (lexeme $ semicolon)
 
 bcArgDefs :: Parsec String st BCArgDefs
 bcArgDefs = BCArgDefs <$> sepBy bcArgDef (lexeme $ char ',')
@@ -118,12 +111,13 @@ bcArguments = ((lexeme bcArg) `sepBy` (lexeme $ char ','))
 bcArg :: Parsec String st BCArg
 bcArg = BCArg <$> bcExpression
 
+		-- <|>	try bcBinaryExpr
+		-- <|> try bcUnaryExpr
+		-- <|> BCExprFuncCall <$> bcCall
 bcExpression :: Parsec String st BCExpr
-bcExpression =	BCExprFinal <$> BCValueLiteral <$> bcLiteral
-	    <|> BCExprFinal <$> BCValueIdentifier <$> bcIdentifier
-	   -- <|> BCExprFuncCall <$> bcCall
-	    <|>	try bcBinaryExpr
-	    <|> try bcUnaryExpr
+bcExpression =	BCExprFinal <$> BCValueLiteral <$> (lexeme bcLiteral)
+	    -- <|> BCExprFinal <$> BCValueIdentifier <$> bcIdentifier
+	    -- <|> try bcUnaryExpr
 	    <?> "expression"
 
 bcBinaryExpr :: Parsec String st BCExpr
@@ -136,7 +130,7 @@ bcValue :: Parsec String st BCValue
 bcValue = BCValueLiteral <$> bcLiteral <|> BCValueIdentifier <$> bcIdentifier
 
 bcString :: Parsec String st BCString
-bcString = BCString <$> (between (char '\"') (char '\"') (many anyChar))
+bcString = BCString <$> ((char '\"') *> (many $ try $ noneOf "\"") <* (char '\"'))
 
 
 openBlock = lexeme (char '{')
@@ -156,17 +150,18 @@ bcNumber :: Parsec String st BCNumber
 bcNumber = BCNumberFloat <$> try bcFloat <|> BCNumberInt <$> bcInt
 
 bcFloat :: Parsec String st BCFloat
-bcFloat = fmap rd $ (++) <$> (many1 digit) <*> decimal
-    where rd      = read :: String -> BCFloat
-          decimal = option "" $ (:) <$> char '.' <*> (many1 digit)
+bcFloat = BCFloat <$> floating
 
+floating  :: Parsec String st Double
+floating  = read <$> parser  where 
+   parser = (++) <$> (many1 digit) <*> (option "" $ (:) <$> char '.'  <*> (many1 digit) )
 
 stringify :: [Int] -> String
 --stringify = foldl ((:) . show1) "" 
 stringify n = foldl (++) "" (map show n)
 
 bcInt :: Parsec String st BCInt
-bcInt = BCInt <$> (liftM read (lexeme (many bcDigit)))
+bcInt = BCInt <$> (liftM read (lexeme (many1 bcDigit)))
 
 bcBool :: Parsec String st BCBool
 bcBool = BCBool <$> (True <$ (lexeme $ string "true")) <|> BCBool <$> (False <$ (lexeme $ string "false"))

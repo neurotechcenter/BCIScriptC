@@ -1,9 +1,10 @@
 actor display {
     var var2: num = 1.5;
     when start {
-	while (25) {
+	displayAsText();
+	displayStr("amogus");
+	repeat 25 { 
 	    waitForProcess();
-	    displayAsText();
 	    displayStr(intToString(randomDigit()));
 	    wait(0.25);
 	    displayStr("");

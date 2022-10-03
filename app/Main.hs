@@ -15,13 +15,16 @@ import Text.Parsec.String (parseFromFile)
 main :: IO ()
 main = do
     args <- getArgs;
+    putStrLn "begin parse"
     case args of 
-	[] -> error "Enter a filename to compile"
-	[fn] -> (parseFromFile bcProgram fn) >>= either print verProgram
+        [] -> error "Enter a filename to compile"
+        [fn] -> (parseFromFile bcProgram fn) >>= printOrCompile 
 
+printOrCompile :: Either ParseError BCProgram -> IO ()
+printOrCompile = either print compileProgram
 
-verProgram :: BCProgram -> IO ()
-verProgram program = do
+compileProgram :: BCProgram -> IO ()
+compileProgram program = do
     putStrLn "parsed, verifying";
     let programverdecs = verifyAllDeclarations program;
     let verdecmessages = filter (liftA2 (||) isErr isWarn) (frs programverdecs);  
@@ -37,6 +40,7 @@ verProgram program = do
 	    let finalprogram = generateProgram (snd programvaldefs);
 	    putStrLn "writing to file AppInitPartial.cpp"
 	    writeFile ("AppInitPartial.cpp") finalprogram;
+	    putStrLn "finished."
 	    return (); 
 
 
