@@ -24,8 +24,6 @@ import Text.Parsec.Pos (newPos)
 --  Section: Verification functions 
 
 
-
-
 --  Section: Verification of declarations
 --Verifies a program, and separates out top-level on event declarations because they are not allowed outside of actors
 verifyAllDeclarations :: BCProgram -> ([Result], BCProgram, [Signature])

@@ -12,6 +12,7 @@ import Control.Applicative (liftA2)
 import Control.Monad (when, unless, liftM)
 import Text.Parsec.String (parseFromFile)
 
+
 main :: IO ()
 main = do
     args <- getArgs;

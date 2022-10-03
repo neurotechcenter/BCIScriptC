@@ -152,6 +152,8 @@ bcNumber = BCNumberFloat <$> try bcFloat <|> BCNumberInt <$> bcInt
 bcFloat :: Parsec String st BCFloat
 bcFloat = BCFloat <$> floating
 
+-- a
+
 floating  :: Parsec String st Double
 floating  = read <$> parser  where 
    parser = (++) <$> (many1 digit) <*> (option "" $ (:) <$> char '.'  <*> (many1 digit) )

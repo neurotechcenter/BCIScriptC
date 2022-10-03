@@ -47,7 +47,7 @@ data BCSequence = BCSequence [BCStatement] deriving Show
 
 data BCStatement = BCStatementCall BCCall SourcePos | BCStatementControl BCControl SourcePos | BCStatementAssign BCAssign SourcePos deriving Show
 
--- A statement that applies a procedure or builtin function.
+--  A statement that applies a procedure or builtin function.
 data BCCall = BCCall BCIdentifier [BCArg] deriving (Show) 
 data BCAssign = BCAssign BCIdentifier BCExpr deriving Show
 data BCControl = BCControlLoop BCRepeat | BCControlWhile BCWhile | BCControlIf BCIf | BCControlIfElse BCIfElse | BCControlWaitForProcess | BCControlWait BCWait deriving Show

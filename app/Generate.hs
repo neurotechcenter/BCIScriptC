@@ -7,6 +7,7 @@ import Control.Monad
 import Data.Char (toLower)
 import Types (BCStatement(BCStatementControl), BCControl (BCControlIf, BCControlLoop), BCIfElse (BCIfElse))
 
+
 generateProgram :: BCProgram -> String
 generateProgram (BCProgram defs) = 
     "#include \"BCIEvent.hpp\"" +>

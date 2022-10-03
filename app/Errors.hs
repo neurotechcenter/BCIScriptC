@@ -3,6 +3,7 @@ import Text.Parsec (SourcePos)
 import Types
 import Types (BCIdentifier(BCIdentifier))
 
+
 --pos: position t: type n: name m: message
 genericNamedError :: SourcePos -> String -> String -> String -> String
 genericNamedError pos t n m = "Error at " ++ show pos ++ ", " ++ t ++ " " ++ n ++ ": " ++ m
