@@ -18,7 +18,9 @@ builtins = [
     mkfuncsig "intToString" [IntType] StringType,
     mkprocsig "setSize" [NumType],
     mkprocsig "displayAsText" [],
-    mkprocsig "displayAsImage" []
+    mkprocsig "displayAsImage" [],
+    mkprocsig "waitForProcess" [],
+    mkprocsig "wait" [NumType]
     ]
 
 

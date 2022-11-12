@@ -5,7 +5,6 @@ actor display {
 	displayStr("amogus");
 	repeat 25 { 
 	    waitForProcess();
-	    displayStr(intToString(randomDigit()));
 	    wait(0.25);
 	    displayStr("");
 	}

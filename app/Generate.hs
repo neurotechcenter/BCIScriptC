@@ -112,7 +112,7 @@ subArgs args (StrNoSub s) = s
 getArgExpr (BCArg ex) = ex
 
 strSubs :: Parsec String st [StrSub]
-strSubs = many ((StrSub <$> try strSubN) <|> (StrNoSub <$> many (noneOf "$")))
+strSubs = many1 ((StrSub <$> try strSubN) <|> (StrNoSub <$> try (many1 (noneOf "$")) <|> StrNoSub <$> string ""))
 
 strSubN :: Parsec String st Int
 strSubN = char '$' *> (read <$> many1 digit)

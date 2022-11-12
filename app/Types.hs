@@ -23,25 +23,25 @@ instance Eq Signature where -- Signature is equal when identifier is equal, defi
 
 
 
-data BCProgram = BCProgram [BCDef]
+data BCProgram = BCProgram [BCDef] deriving Show
 
-data BCDef = BCActorDef BCActor | BCOnEventDef BCOnEvent | BCProcDef BCProc | BCFuncDef BCFunc | BCEventDef BCEvent | BCStateDef BCState | BCVarDef BCVariable
+data BCDef = BCActorDef BCActor | BCOnEventDef BCOnEvent | BCProcDef BCProc | BCFuncDef BCFunc | BCEventDef BCEvent | BCStateDef BCState | BCVarDef BCVariable deriving Show
 
-data BCActor = BCActor BCIdentifier [BCDef]
+data BCActor = BCActor BCIdentifier [BCDef] deriving Show
 
-data BCEvent = BCEvent BCIdentifier
+data BCEvent = BCEvent BCIdentifier deriving Show
 
-data BCState = BCState BCIdentifier StateType
+data BCState = BCState BCIdentifier StateType deriving Show
 
-data StateType = StateBool | StateU8 | StateI8 | StateU32 | StateI32
+data StateType = StateBool | StateU8 | StateI8 | StateU32 | StateI32 deriving Show
 
-data BCVariable = BCVariable BCIdentifier BCDataType BCLiteral
+data BCVariable = BCVariable BCIdentifier BCDataType BCLiteral deriving Show
 
-data BCFunc = BCFunc BCIdentifier BCArgDefs BCDataType BCExpr
+data BCFunc = BCFunc BCIdentifier BCArgDefs BCDataType BCExpr deriving Show
 
-data BCProc = BCProc BCIdentifier BCArgDefs BCSequence
+data BCProc = BCProc BCIdentifier BCArgDefs BCSequence deriving Show
 
-data BCOnEvent = BCOnEvent BCIdentifier BCSequence
+data BCOnEvent = BCOnEvent BCIdentifier BCSequence deriving Show
 
 data BCSequence = BCSequence [BCStatement] deriving Show
 
@@ -90,8 +90,8 @@ data BCBinaryOperator = BCAdd | BCSubtract | BCMult | BCDiv | BCAnd | BCOr
 
 data BCUnaryOperator = BCNot
 
-data BCArgDefs = BCArgDefs [BCArgDef]
-data BCArgDef = BCArgDef BCIdentifier BCDataType 
+data BCArgDefs = BCArgDefs [BCArgDef] deriving Show
+data BCArgDef = BCArgDef BCIdentifier BCDataType deriving Show 
 
 data BCDataType = BoolType | IntType | NumType | StringType  
 instance Show BCDataType where

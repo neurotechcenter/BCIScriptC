@@ -130,7 +130,7 @@ bcValue :: Parsec String st BCValue
 bcValue = BCValueLiteral <$> bcLiteral <|> BCValueIdentifier <$> bcIdentifier
 
 bcString :: Parsec String st BCString
-bcString = BCString <$> ((char '\"') *> (many $ try $ noneOf "\"") <* (char '\"'))
+bcString = BCString <$> ((char '\"') *> (many $ noneOf "\"") <* (char '\"'))
 
 
 openBlock = lexeme (char '{')
@@ -156,7 +156,7 @@ bcFloat = BCFloat <$> floating
 
 floating  :: Parsec String st Double
 floating  = read <$> parser  where 
-   parser = (++) <$> (many1 digit) <*> (option "" $ (:) <$> char '.'  <*> (many1 digit) )
+   parser = (++) <$> (many1 digit) <*> ((:) <$> char '.'  <*> (many1 digit) )
 
 stringify :: [Int] -> String
 --stringify = foldl ((:) . show1) "" 
@@ -169,7 +169,7 @@ bcBool :: Parsec String st BCBool
 bcBool = BCBool <$> (True <$ (lexeme $ string "true")) <|> BCBool <$> (False <$ (lexeme $ string "false"))
 
 bcIdentifier :: Parsec String st BCIdentifier
-bcIdentifier = BCIdentifier <$> (lexeme $ (:) <$> letter <*> (many (letter <|> digit))) <*> getPosition
+bcIdentifier = BCIdentifier <$> try (lexeme $ (:) <$> letter <*> (many1 (letter <|> digit))) <*> getPosition 
 
 bcBinaryOperator :: Parsec String st BCOperator
 bcBinaryOperator = BCOperatorBinary <$> (liftM getOperator $ lexeme $ oneOf binaryOperators) <*> getPosition
