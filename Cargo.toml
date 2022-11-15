@@ -7,3 +7,5 @@ edition = "2021"
 
 [dependencies]
 nom = "7"
+nom_locate = "4.0.0"
+simple-error = "0.2"

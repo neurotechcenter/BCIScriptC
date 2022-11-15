@@ -5,6 +5,7 @@ bciscriptc
 
 /app
 *.bcis
+*.lock
 
 # Added by cargo
 
