@@ -1,6 +1,8 @@
 mod parse;
-use parse::program;
 mod ast;
+mod err;
+mod verify;
+mod builtins;
 
 fn main() -> Result<(),Box<dyn std::error::Error>> {
     let files = std::env::args();
