@@ -94,10 +94,12 @@ fn verify_dec_actor(name: Id, members: Vec<Def>, sigs: Vec<Signature>) -> Result
     let errs = members.into_iter()
        .filter(|d| match d {State => true, _ => false})
        .map(err_state_in_actor)
+       .filter([d] match d {Actor => true, _ => false})
+       .map(err_actor_in_actor)
        .collect::<Vec<CError>>;
     
     let sig = Signature::Actor{name};
-    errs.push(get_defed_err(&sig, &sigs));
+    errs.push(get_redef_err(&sig, &sigs));
     if (errs.size() > 0) {
         return Err(errs);
     }
@@ -120,4 +122,48 @@ fn verify_definitions(p: Program, sigs: Vec<Signature>) -> Result<(), Vec<CError
 
 }
 
+fn verify_expr(e: &mut Expr, sigs: &Vec<Signature>) -> Result<(), Vec<CError>>{
+   e.exprtype = ver_uexpr(e.expr)?; 
+   Ok(())
+}
 
+fn verify_uexpr(e: &mut UExpr, sigs: Vec<Signature>) -> Result<Type, Vec<CError>> {
+    match e {
+        UExpr::Value(e) => ver_value(e, sigs),
+        UExpr::UnExpr { op, expr } => ver_un_ex(op, expr),
+        UExpr::BinExpr { l, op, r } => ver_bin_ex(l, op, r)
+    }
+}
+
+fn ver_value(v: &Value, sigs: &Vec<Signature>) -> Result<Type, Vec<CError>> {
+    match v {
+            Value::Literal(Literal::IntLiteral(_)) => Ok(Type::Int),   
+        Value::Literal(Literal::NumLiteral(_)) => Ok(Type::Num),   
+        Value::Literal(Literal::BoolLiteral(_)) => Ok(Type::Bool),   
+        Value::Literal(Literal::StringLiteral(_)) => Ok(Type::Str),   
+        Value::VarCall(a) => {match lookup_sig(sigs, a) {
+            Some(Signature::Var{name, vartype}) => Ok(*vartype),
+            Some(_) => Err(vec!(err_wrong_deftype(a, "variable"))),
+            None => Err(vec!(err_undeclared_id(a)))
+        }}
+
+    }
+}
+
+fn ver_un_ex(op: UnOp, expr: &mut Expr, sigs: &Vec<Signature>) -> Result<Type, Vec<CError>> {
+    verify_expr(expr, sigs)?;
+    let extype = expr.exprtype;
+    match op {
+        UnOp::Neg(a) => if match extype {Type::Int | Type::Num => true, _ => false} {Ok(extype)} else {Err(vec!(err_unary_mismatch(a, extype)))},
+        UnOp::Not(a) => if match extype {Type::Bool => true, _ => false} {Ok(extype)} else {Err(vec!(err_unary_mismatch(a, extype)))}
+    }
+}
+
+fn lookup_sig<'a>(v: &Vec<Signature<'a>>, s: &str) -> Option<&'a Signature<'a>> {
+    for sig in v {
+        if sig.name().fragment() == &s {
+            return Some(sig);
+        }
+    }
+    return None;
+}

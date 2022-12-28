@@ -26,7 +26,26 @@ pub fn err_state_in_actor(d: &Def) -> CError{
     }
 }
 
+pub fn err_actor_in_actor(d: &Def) -> CError {
+    match d {
+        Def::Actor { name, members } => generic_err(name, "Actors cannot be defined within another actor"),
+        _ => panic!("err_actor_in_actor passed wrong def type")
+    }
+}
+
 pub fn err_redefinition(sig: &Signature, prev: &Signature) -> CError{
     generic_err(sig.name(), format!("Symbol is already defined in {} at line {}",
         sig.name().extra, sig.name().location_line()).as_str())
+}
+
+pub fn err_wrong_deftype(s: &Span, ex: &str) -> CError {
+    generic_err(s, format!("{} was defined, but is not a {}", s, ex).as_str())
+}
+
+pub fn err_undeclared_id(id: &Span) -> CError {
+    generic_err(id, format!("Undeclared identifier: symbol {} not found", id.fragment()).as_str())
+}
+
+pub fn err_unary_mismatch(op: &Span, expected: Type) {
+    generic_err(op, format!("cannot invoke operator {} on operand of type {}", op.fragment(), expected));
 }

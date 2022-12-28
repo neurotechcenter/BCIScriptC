@@ -44,11 +44,11 @@ fn gen_var(name: &Id, vartype: Type, value: Literal) -> String {
 }
 
 fn gen_proc( name: &Id,  args: &Vec<ArgDef>, seq: &Seq) -> String {
-    String::new()
+    String::from("UNIMPLEMENTED")
 }
 
 fn gen_func(name: &Id, args: &Vec<ArgDef>, rettype: &Type, expr: &Expr) -> String {
-    String::new()
+    String::from("UNIMPLEMENTED")
 }
 
 fn gen_actor(name: &Id, members: &Vec<Def>) -> String {
@@ -75,14 +75,14 @@ fn gen_state(name: &Id, statetype: &StateType) -> String {
             )
 }
 
-fn gen_actor_def(def: Def) -> String {
+fn gen_actor_def(def: &Def) -> String {
     match def {
         Def::Var { name, vartype, value } => indent1(2, gen_act_var(name.fragment().to_string(), vartype, value)),
         Def::Proc { name, args, seq } => String::from("UNIMPLEMENTED"),
         Def::Func { name, args, rettype, expr } => String::from("UNIMPLEMENTED"),
         Def::Sounds { files } => files.iter().map(|f| indent1(2, format!(".addSound({})", f.fragment()))).fold(String::new(), |l, r| format!("{}\n{}", l, r)),
         Def::Graphics { files } => files.iter().map(|f| indent1(2, format!(".addGraphic({})", f.fragment()))).fold(String::new(), |l, r| format!("{}\n{}", l, r)),
-        Def::OnEvent { name, seq } => indent1(2, format!(".addEventListener(new EventListener(ProtoSequence(){}))", seq.iter().map(|s| gen_stmt(s).fold(String::new(), |l,r| format!("{}\n{}", l, r))))),
+        Def::OnEvent { name, seq } => indent1(2, format!(".addEventListener(new EventListener(ProtoSequence(){}))", gen_seq(seq))),
         Def::Actor { .. } | Def::Event { .. } | Def::State { .. } => panic!("gen_actor_def given invalid def type")
     } 
 
@@ -236,8 +236,55 @@ fn is_digit(c: char) -> bool {
 }
 
 
-fn gen_expr(expr: Expr) -> String {
-    String::new();
+fn gen_expr(expr: &Expr) -> String {
+    match expr.expr {
+        UExpr::BinExpr { l, op, r } => format!("({}{}{})", gen_expr(l.as_ref()), gen_bop(&op), gen_expr(r.as_ref())),
+        UExpr::UnExpr { op, expr } => format!("({}{})", gen_uop(&op), gen_expr(expr.as_ref())),
+        UExpr::Value(val) => gen_val(&val, &expr.exprtype.unwrap())
+    }
+}
+
+fn gen_bop(op: &BinOp) -> String {
+    match op {
+        BinOp::Add(..) => "+",
+        BinOp::Sub(..) => "-",
+        BinOp::Mult(..) => "*",
+        BinOp::Div(..) => "/",
+        BinOp::And(..) => "&&",
+        BinOp::Or(..) => "||"
+    }.to_string()
+}
+
+fn gen_uop(op: &UnOp) -> String {
+    match op {
+        UnOp::Neg(..) => "-",
+        UnOp::Not(..) => "!"
+    }.to_string()
+}
+
+fn gen_val(val: &Value, t: &Type) -> String {
+    match val {
+        Value::Literal(l) => gen_lit(l),
+        Value::VarCall(v) => gen_var_call(v, t),
+        Value::FuncCall(..) => String::from("UNIMPLEMENTED")
+    }
+}
+
+
+fn gen_var_call(v: &Id, t: &Type) -> String {
+    format!("callingSequence.getVariable<{}>(\"{}\")",
+        t.bcis_rep(),
+        v.fragment()
+    )
+}
+
+fn gen_lit(l: &Literal) -> String {
+    match l {
+        Literal::IntLiteral(i) => i.fragment(),
+        Literal::NumLiteral(n) => n.fragment(),
+        Literal::BoolLiteral(b) => b.fragment(),
+        Literal::StringLiteral(s) => s.fragment(),
+    }.to_string()
 }
 
 

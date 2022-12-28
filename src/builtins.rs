@@ -1,3 +1,6 @@
+use std::collections::HashMap;
+
+use crate::ast::BinOp;
 use crate::ast::Type;
 use crate::ast::Span;
 use crate::verify::Signature;
@@ -39,6 +42,10 @@ macro_rules! span{
 macro_rules! strs{
     ($l:literal,$r:literal) => {(String::from($l),String::from($r))};
 }
+
+macro_rules! strsn{
+    ($l:literal,$r:literal) => {(String::from($l), format!(".addNormalBlock([&] (Sequence& callingSequence) {{{}}})\n", $r))}
+}
 pub const BUILTINS: Vec<Signature> = [
     Signature::Event{name: span!("start")},
     proc!("move", Num, Num),
@@ -59,19 +66,28 @@ pub const BUILTINS: Vec<Signature> = [
 ].to_vec();
 
 const BUILTIN_SUBS: Vec<(String, String)> = [
-    strs!("move", "callingSequence.setPositionX(callingSequence.positionX() + $0); callingSequence.setPositionY(callingSequence.positionX + $1);"),
-    strs!("moveTo", "callingSequence.setPositionX($0); callingSequence.setPositionY($1);"),
-    strs!("graphic", "callingSequence.setGraphic($0);"),
-    strs!("nextGraphic", "callingSequence.advanceGraphic();"),
-    strs!("displayStr", "callingSequence.setDisplayStr($0)"),
-    strs!("setSize", "callingSequence.setSize($0, $0)"),
-    strs!("setSize2D", "callingSequence.setSize($0, $1)"),
-    strs!("displayAsText", "Set display mode"), //have to complete implementation of sequence
-    strs!("displayAsImage", "Set display mode"),
-    strs!("truncate", "((int) $0)"),
-    strs!("intToStr", "std::to_string($0)"),
-    strs!("randInt", "callingSequence.randInt($0, $1)"),
-    strs!("rand", "callingSequence.rand($0, $1)")
+    strsn!("move", "callingSequence.setPositionX(callingSequence.positionX() + $0); callingSequence.setPositionY(callingSequence.positionX + $1);"),
+    strsn!("moveTo", "callingSequence.setPositionX($0); callingSequence.setPositionY($1);"),
+    strsn!("graphic", "callingSequence.setGraphic($0);"),
+    strsn!("nextGraphic", "callingSequence.advanceGraphic();"),
+    strsn!("displayStr", "callingSequence.setDisplayStr($0)"),
+    strsn!("setSize", "callingSequence.setSize($0, $0)"),
+    strsn!("setSize2D", "callingSequence.setSize($0, $1)"),
+    strsn!("displayAsText", "Set display mode"), //have to complete implementation of sequence
+    strsn!("displayAsImage", "Set display mode"),
+    strsn!("truncate", "((int) $0)"),
+    strsn!("intToStr", "std::to_string($0)"),
+    strsn!("randInt", "callingSequence.randInt($0, $1)"),
+    strsn!("rand", "callingSequence.rand($0, $1)")
 ].to_vec();
 
-
+pub fn get_builtin_sub(name: &str) -> Option<String>{
+    let namestr = String::from(name);
+    for i in BUILTIN_SUBS {
+        if i.0 == namestr {
+            return Some(i.1);
+        }
+    }
+    return None;
+    
+}

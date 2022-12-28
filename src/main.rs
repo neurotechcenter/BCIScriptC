@@ -3,6 +3,7 @@ mod ast;
 mod err;
 mod verify;
 mod builtins;
+mod generate;
 
 fn main() -> Result<(),Box<dyn std::error::Error>> {
     let files = std::env::args();

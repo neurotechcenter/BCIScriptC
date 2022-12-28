@@ -1,4 +1,6 @@
 extern crate nom_locate;
+use std::fmt::Display;
+
 use nom_locate::LocatedSpan;
 
 pub type Program<'a> = Vec<Def<'a>>;
@@ -34,12 +36,12 @@ pub enum Stm<'a> {
     Timed{time: Expr<'a>, seq: Seq<'a>}
 }
 
-pub struct ElseIf<'a>{cond: Expr<'a>, seq: Seq<'a>}
+pub struct ElseIf<'a>{pub cond: Expr<'a>, pub seq: Seq<'a>}
 
 #[derive(Clone)]
 pub enum StateType { Bool, U8, I8, U32, I32 }
 
-pub struct ArgDef<'a>{ name: Id<'a>, argtype: Type }
+pub struct ArgDef<'a>{ pub name: Id<'a>, pub argtype: Type }
 
 
 /**
@@ -47,8 +49,8 @@ pub struct ArgDef<'a>{ name: Id<'a>, argtype: Type }
  * expressions are given type in the verification phase
  */
 pub struct Expr<'a>{
-    expr: UExpr<'a>,
-    exprtype: Option<Type>
+    pub expr: UExpr<'a>,
+    pub exprtype: Option<Type>
 }
 
 /**
@@ -71,6 +73,27 @@ pub enum Type {
     Str
 }
 
+impl Type {
+    pub fn bcis_rep(&self) -> String {
+        match self {
+            Type::Int => "int",
+            Type::Num => "num",
+            Type::Bool => "bool",
+            Type::Str => "str"
+        }.to_string()
+    }
+
+    pub fn cpp_rep(&self) -> String {
+        match self {
+            Type::Int => "int",
+            Type::Num => "double",
+            Type::Bool => "bool",
+            Type::Str => "std::string"
+        }.to_string()
+    }
+
+}
+
 pub enum Value<'a> {
     Literal(Literal<'a>),
     VarCall(Id<'a>),
@@ -88,8 +111,8 @@ pub enum Literal<'a>{
  * A call to a function
  */
 pub struct FuncCall<'a> {
-    id: Id<'a>,
-    args: Vec<Expr<'a>>
+    pub id: Id<'a>,
+    pub args: Vec<Expr<'a>>
 }
 
 pub enum BinOp<'a> {
