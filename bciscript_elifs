@@ -1,0 +1,46 @@
+The C++ representation of BCIEvent has no "else if" construct; instead, an else if is simply another if-else clause within the else block of another if-else statement.
+
+These are three equivalent representations of a four-branch statement (with conditions removed for brevity).
+
+
+Expressed in BCIScript:
+if {
+    A
+} elif {
+    B
+} elif {
+    C
+} else{
+    D
+}
+
+How this is actually represented within BCIEvent itself
+if {
+A
+} else {
+    if {
+    B
+    }
+    else {
+	if {
+	C
+	} else {
+	    D
+	}
+    }
+}
+
+The produced C++ code output by BCIScriptC, with comments for the current state of the statement close stack.
+.addIfElse(1) // close stack: else 1, end 1,
+.A
+.closeStmt() // else 1, pop from stack
+.addIfElse(2) //close stack: else 2, end 2, end 1
+.B
+.closeStmt() //else 2
+.addIfElse(3) //close stack: else 3, end 3, end 2, end 1
+.C
+.closeStmt() //else 3
+.D
+.closeStmt() //end 3
+.closeStmt() //end 2
+.closeStmt() //end 1
