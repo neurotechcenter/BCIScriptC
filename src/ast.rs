@@ -1,5 +1,4 @@
 extern crate nom_locate;
-use std::fmt::Display;
 
 use nom_locate::LocatedSpan;
 
@@ -65,7 +64,7 @@ pub enum UExpr<'a>{
 /**
  * Possible value types
  */
-#[derive(Clone)]
+#[derive(Clone, Copy, PartialEq)]
 pub enum Type {
     Int,
     Num,
@@ -114,20 +113,25 @@ pub struct FuncCall<'a> {
     pub id: Id<'a>,
     pub args: Vec<Expr<'a>>
 }
-
+/*
 pub enum BinOp<'a> {
     Add(Add<'a>),
     Sub(Sub<'a>),
     Mult(Mult<'a>),
     Div(Div<'a>),
     And(And<'a>),
-    Or(Or<'a>)
+    Or(Or<'a>),
+    Eqs(Eqs<'a>)
 }
 
 pub enum UnOp<'a>{
     Neg(Neg<'a>),
     Not(Not<'a>)
 }
+*/
+
+pub type BinOp<'a> = Span<'a>;
+pub type UnOp<'a> = Span<'a>;
 
 /**
  * Types below this point are essentially token types
@@ -153,5 +157,6 @@ pub type Mult<'a> = Span<'a>;
 pub type Div<'a> = Span<'a>;
 pub type And<'a> = Span<'a>;
 pub type Or<'a> = Span<'a>;
+pub type Eqs<'a> = Span<'a>;
 pub type Neg<'a> = Span<'a>;
 pub type Not<'a> = Span<'a>;

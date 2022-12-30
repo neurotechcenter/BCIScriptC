@@ -65,7 +65,7 @@ pub const BUILTINS: Vec<Signature> = [
     func!("random", Num, Num, Num)
 ].to_vec();
 
-const BUILTIN_SUBS: Vec<(String, String)> = [
+pub const BUILTIN_SUBS: HashMap<String, String> = [
     strsn!("move", "callingSequence.setPositionX(callingSequence.positionX() + $0); callingSequence.setPositionY(callingSequence.positionX + $1);"),
     strsn!("moveTo", "callingSequence.setPositionX($0); callingSequence.setPositionY($1);"),
     strsn!("graphic", "callingSequence.setGraphic($0);"),
@@ -79,15 +79,23 @@ const BUILTIN_SUBS: Vec<(String, String)> = [
     strsn!("intToStr", "std::to_string($0)"),
     strsn!("randInt", "callingSequence.randInt($0, $1)"),
     strsn!("rand", "callingSequence.rand($0, $1)")
-].to_vec();
+].to_vec().into_iter().collect();
 
-pub fn get_builtin_sub(name: &str) -> Option<String>{
-    let namestr = String::from(name);
-    for i in BUILTIN_SUBS {
-        if i.0 == namestr {
-            return Some(i.1);
-        }
-    }
-    return None;
-    
-}
+
+//The binary operators, with the first two types in the tuple being inputs, and the last type being
+//output.
+pub const BINARY_OPERATORS: HashMap<&str, Vec<(Type, Type, Type)>> = [
+    ("+", vec!((Type::Int, Type::Int, Type::Int), (Type::Int, Type::Num, Type::Num), (Type::Num, Type::Int, Type::Num), (Type::Str, Type::Str, Type::Str))),
+    ("-", vec!((Type::Int, Type::Int, Type::Int), (Type::Int, Type::Num, Type::Num), (Type::Num, Type::Int, Type::Num))),
+    ("*", vec!((Type::Int, Type::Int, Type::Int), (Type::Int, Type::Num, Type::Num), (Type::Num, Type::Int, Type::Num))),
+    ("/", vec!((Type::Int, Type::Int, Type::Num), (Type::Int, Type::Num, Type::Num), (Type::Num, Type::Int, Type::Num))),
+    ("&&", vec!((Type::Bool, Type::Bool, Type::Bool))),
+    ("||", vec!((Type::Bool, Type::Bool, Type::Bool))),
+    ("==", vec!((Type::Bool, Type::Bool, Type::Bool), (Type::Int, Type::Int, Type::Bool), (Type::Int, Type::Num, Type::Bool),
+        (Type::Num, Type::Int, Type::Bool), (Type::Str, Type::Str, Type::Bool))),
+].to_vec().into_iter().collect();
+
+pub const UNARY_OPERATORS: HashMap<&str, Vec<(Type, Type)>> = [
+    ("-", vec!((Type::Int, Type::Int), (Type::Num, Type::Num))),
+    ("!", vec!((Type::Bool, Type::Bool)))
+].to_vec().into_iter().collect();
