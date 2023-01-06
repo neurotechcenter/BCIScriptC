@@ -13,8 +13,10 @@ pub enum Def<'a> {
     Proc{name: Id<'a>, args: Vec<ArgDef<'a>>, seq: Seq<'a>},
     Func{name: Id<'a>, args: Vec<ArgDef<'a>>, rettype: Type, expr: Expr<'a>},
     Event{name: Id<'a>},
+    StateEvent{name: Id<'a>},
+    Timer{name: Id<'a>},
     State{name: Id<'a>, statetype: StateType},
-    Var{name: Id<'a>, vartype: Option<Type>, value: Option<Literal<'a>>},
+    Var{name: Id<'a>, vartype: Option<Type>, value: Option<Expr<'a>>},
     Graphics{files: Vec<StrLit<'a>>},
     Sounds{files: Vec<StrLit<'a>>}
 }
@@ -28,6 +30,7 @@ pub enum Stm<'a> {
     Call{id: Id<'a>, args: Vec<Expr<'a>>},
     Assign{id: Id<'a>, val: Expr<'a>},
     Var{name: Id<'a>, vartype: Option<Type>, value: Option<Expr<'a>>},
+    Timer{name: Id<'a>},
     Repeat{val: Expr<'a>, seq: Seq<'a>},
     While{cond: Expr<'a>, seq: Seq<'a>},
     If{cond: Expr<'a>, seq: Seq<'a>},
