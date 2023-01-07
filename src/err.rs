@@ -38,15 +38,15 @@ pub fn err_redefinition(sig: &Signature, prev: &Signature) -> CError{
 
 pub fn err_redefinition1(name: &Id, prev: &Signature) -> CError{
     generic_err(name, format!("Symbol is already defined in {} at line {}",
-        sig.name().extra, sig.name().location_line()).as_str())
+        prev.name().extra, prev.name().location_line()).as_str())
 }
 
 pub fn err_wrong_deftype(s: &Span, ex: &str) -> CError {
     generic_err(s, format!("{} was defined, but is not a {}", s, ex).as_str())
 }
 
-pub fn err_undeclared_id(id: &Span) -> CError {
-    generic_err(id, format!("Undeclared identifier: symbol {} not found", id.fragment()).as_str())
+pub fn err_undeclared_id(id: &Span, ex: &str) -> CError {
+    generic_err(id, format!("Undeclared identifier: symbol {} not found, or it is not a {}", id.fragment(), ex).as_str())
 }
 
 pub fn err_unary_mismatch(op: &Span, given_type: Type, possible_sigs: &Vec<(Type, Type)>) -> CError {
@@ -59,6 +59,14 @@ pub fn err_binary_left_mismatch(op: &Span, given_type: Type, possible_sigs: &Vec
     generic_err(op, &format!("cannot invoke operator {0} on left-hand operand of type {1}, possible types on which operator {0} can be used: {2}",
                             op.fragment(), given_type.bcis_rep(),
                             possible_sigs.iter().map(|s| s.0.bcis_rep()).collect::<Vec<String>>().join(", ")))
+}
+
+pub fn err_circular_def(id: &Span, sequence: &Vec<&Id>) -> CError {
+    generic_err(id, &format!("Circular definition: this symbol is defined based on the value of a var/func which references it, called at {} {}",
+                             sequence.iter()
+                             .map(|id| format!("{}, (line {}, col {} in {})\n called by", id.fragment(), id.location_line(), id.get_utf8_column(), id.extra))
+                             .collect::<Vec<String>>().join(""),
+                             id.fragment()))
 }
 
 // The tuples are references because while the other two error functions will be used on borrowed
