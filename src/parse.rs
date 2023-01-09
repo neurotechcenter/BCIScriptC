@@ -104,7 +104,9 @@ fn stm (inp: Span) -> IResult<Span, Stm> {
         loop_while,
         cond_ifelse,
         cond_if,
-        timed
+        timed,
+        timer,
+        callevent
         ))(inp)
 }
 

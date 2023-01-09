@@ -28,30 +28,37 @@ pub fn generate_program<'a>(program: Program<'a>) -> String {
 fn gen_def<'a>(def: Def<'a>) -> String { //The unwrapped values here should never be None, so a
                                           //panic here can only arise from a bug in the code.
     match def {
-        Def::Var { name, vartype, value } => gen_var(name, vartype.unwrap(), value.unwrap()),
+        Def::Var { name, vartype, value } => gen_var(name, value),
         Def::Proc { name, args, seq } => gen_proc(name, args, seq),
         Def::Func { name, args, rettype, expr } => gen_func(name, args, rettype, expr),
         Def::Actor { name, members } => gen_actor(name, members),
         Def::Event { name } => gen_event(name),
         Def::State { name, statetype } => gen_state(name, statetype),
+        Def::StateEvent { name } => gen_stateevent(name),
+        Def::Timer { name } => gen_timer(name),
         _ => panic!("gen_def passed invalid type")
     } 
 }
 
-fn gen_var(name: Id, vartype: Type, value: Literal) -> String {
-    match vartype {
-        Type::Int | Type::Num => format!("addVariable(std::make_unique<NumberVariable>({}{}));", name.fragment(), gen_lit(value)),
-        Type::Bool => format!("addVariable((std::make_unique({}{})))", name.fragment(), gen_lit(value)),
-        Type::Str => panic!("gen_var given a value of Str, which should not be possible.")
-    }
+fn gen_var(name: Id, value: Option<Expr>) -> String {
+    format!("addVariable(\"{}\"{})", name.fragment(),
+        match value {
+            Some(e) => format!(", [&] (SequenceEnvironment &callingSequence){}", gen_expr(e, None)),
+            None => String::new()
+        }
+    )
 }
 
 fn gen_proc( name: Id,  args: Vec<ArgDef>, seq: Seq) -> String {
-    unimplemented!()
+    format!(".addProcedure(\"{}\",\nProtoSequence({{std::vector<std::string>{{ {} }} }})\n{})",
+        name.fragment(),
+        args.iter().map(|a| a.name.fragment().to_string()).collect::<Vec<String>>().join(", "),
+        gen_seq(seq)
+    )
 }
 
 fn gen_func(name: Id, args: Vec<ArgDef>, rettype: Type, expr: Expr) -> String {
-    unimplemented!()
+    format!(".addFunction(\"{}\",{},[&] (std::vector<BCIEValue> args, SequenceEnvironment &callingSequence) {{{}}})", name.fragment(), args.len(), gen_expr(expr, Some(args)))
 }
 
 fn gen_actor(name: Id, members: Vec<Def>) -> String {
@@ -78,34 +85,28 @@ fn gen_state(name: Id, statetype: StateType) -> String {
             )
 }
 
+fn gen_stateevent( name: Id ) -> String {
+    format!(".addStateEvent(\"{}\")", name.fragment())
+}
+
+fn gen_timer( name: Id ) -> String {
+    format!(".addTimer(\"{}\")", name.fragment())
+}
+
 fn gen_actor_def(def: Def) -> String {
     match def {
-        Def::Var { name, vartype, value } => indent1(2, gen_act_var(name.fragment(), vartype, value)),
-        Def::Proc { name, args, seq } => unimplemented!(),
-        Def::Func { name, args, rettype, expr } => unimplemented!(),
-        Def::Sounds { files } => files.iter().map(|f| indent1(2, format!(".addSound({})", f.fragment()))).fold(String::new(), |l, r| format!("{}\n{}", l, r)),
+        Def::Var { name, vartype, value } => indent1(2, gen_var(name,  value)),
+        Def::Proc { name, args, seq } => gen_proc(name, args, seq),
+        Def::Func { name, args, rettype, expr } => gen_func(name, args, rettype, expr),
+        Def::Sounds { files } => files.iter().map(|f| indent1(2, format!(".addSound(std::vector<std::string>> {})", f.fragment()))).fold(String::new(), |l, r| format!("{}\n{}", l, r)),
         Def::Graphics { files } => files.iter().map(|f| indent1(2, format!(".addGraphic({})", f.fragment()))).fold(String::new(), |l, r| format!("{}\n{}", l, r)),
         Def::OnEvent { name, seq } => indent1(2, format!(".addEventListener(new EventListener(ProtoSequence(){}))", gen_seq(seq))),
-        Def::Actor { .. } | Def::Event { .. } | Def::State { .. } => panic!("gen_actor_def given invalid def type")
+        Def::Timer { name } => gen_timer(name),
+        Def::Actor { .. } | Def::Event { .. } | Def::State { .. } | Def::StateEvent { .. } => panic!("gen_actor_def given invalid def type")
     } 
 
 }
 
-fn gen_act_var(name: &str, vartype: Option<Type>, value: Option<Literal>) -> String {
-    format!(".addVariable(new {}({},{}))", 
-        match vartype {
-            Some(Type::Int) => "IntVariable",
-            Some(Type::Num) => "NumVariable",
-            Some(Type::Bool) => "BoolVariable",
-            Some(Type::Str) => panic!("gen_act_var: given a variable of type Str, which is not supported"),
-            None => panic!("gen_act_var: given a var of unknown type; its type must be known at this point")
-        },
-        name,
-        match value {
-            Some(value) => gen_lit(value),
-            None => panic!("gen_act_var: given a var without a value; it should have been given a value before this point")
-        })    
-}
 
 fn gen_seq(seq: Seq) -> String {
     seq.iter().map(|s| *s).map(gen_stmt).collect::<Vec<String>>().join("")
@@ -120,7 +121,8 @@ fn gen_stmt(stm: Stm) -> String {
         Stm::Timed { time, seq } => gen_timed(time, seq),
         Stm::Assign { id, val } => gen_assign(id, val),
         Stm::Repeat { val, seq } => gen_repeat(val, seq),
-        Stm::IfElse { cond, seq, elifs, elseq } => gen_if_else(cond, seq, elifs, elseq)
+        Stm::IfElse { cond, seq, elifs, elseq } => gen_if_else(cond, seq, elifs, elseq),
+        Stm::Timer { name, cmd } => gen_timer(name)
     }
 
 }
@@ -245,7 +247,7 @@ fn is_digit(c: char) -> bool {
 }
 
 
-fn gen_expr(expr: Expr) -> String {
+fn gen_expr(expr: Expr, funcargs: Option<Vec<ArgDef>>) -> String {
     match expr.expr {
         UExpr::BinExpr { l, op, r } => format!("({}{}{})", gen_expr(*l), gen_bop(op), gen_expr(*r)),
         UExpr::UnExpr { op, expr } => format!("({}{})", gen_uop(op), gen_expr(*expr)),
@@ -271,7 +273,7 @@ fn gen_uop(op: UnOp) -> String {
     }.to_string()
 }
 
-fn gen_val(val: Value, t: Type) -> String {
+fn gen_val(val: Value, t: Type, funcargs: Option<Vec<ArgDef>>) -> String {
     match val {
         Value::Literal(l) => gen_lit(l),
         Value::VarCall(v) => gen_var_call(v, t),

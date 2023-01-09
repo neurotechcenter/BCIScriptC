@@ -30,21 +30,25 @@ pub enum Stm<'a> {
     Call{id: Id<'a>, args: Vec<Expr<'a>>},
     Assign{id: Id<'a>, val: Expr<'a>},
     Var{name: Id<'a>, vartype: Option<Type>, value: Option<Expr<'a>>},
-    Timer{name: Id<'a>},
-    Repeat{val: Expr<'a>, seq: Seq<'a>},
-    While{cond: Expr<'a>, seq: Seq<'a>},
-    If{cond: Expr<'a>, seq: Seq<'a>},
-    IfElse{cond: Expr<'a>, seq: Seq<'a>, elifs: Vec<ElseIf<'a>>, elseq: Seq<'a>},
-    Timed{time: Expr<'a>, seq: Seq<'a>}
+    Timer{name: Id<'a>, cmd: TimerCmd},
+    Repeat{kw: Span<'a>, val: Expr<'a>, seq: Seq<'a>},
+    While{kw: Span<'a>, cond: Expr<'a>, seq: Seq<'a>},
+    If{kw: Span<'a>, cond: Expr<'a>, seq: Seq<'a>},
+    IfElse{kw: Span<'a>, cond: Expr<'a>, seq: Seq<'a>, elifs: Vec<ElseIf<'a>>, elseq: Seq<'a>},
+    Timed{kw: Span<'a>, time: Expr<'a>, seq: Seq<'a>},
+    CallEvent{tp: Option<EvType>, name: Id<'a>}
 }
 
-pub struct ElseIf<'a>{pub cond: Expr<'a>, pub seq: Seq<'a>}
+pub struct ElseIf<'a>{pub kw: Span<'a>, pub cond: Expr<'a>, pub seq: Seq<'a>}
 
 #[derive(Clone)]
 pub enum StateType { Bool, U8, I8, U32, I32 }
 
 pub struct ArgDef<'a>{ pub name: Id<'a>, pub argtype: Type }
 
+pub enum TimerCmd {Add, Start, Stop, Reset, Read}
+
+pub enum EvType {BCISEvent, StateEvent}
 
 /**
  * An expression with a type
@@ -99,7 +103,8 @@ impl Type {
 pub enum Value<'a> {
     Literal(Literal<'a>),
     VarCall(Id<'a>),
-    FuncCall(FuncCall<'a>)
+    FuncCall(FuncCall<'a>),
+    TimerCall{name: Id<'a>, cmd: TimerCmd}
 }
 
 pub enum Literal<'a>{
