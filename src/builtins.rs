@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use crate::ast::BinOp;
 use crate::ast::Type;
 use crate::ast::Span;
+use crate::ast::ArgDef;
 use crate::verify::Signature;
 
 //The name of the hypothetical file where these built-in definitions are stored
@@ -14,24 +15,24 @@ macro_rules! proc{
         {
             let mut v = Vec::new();
             $( v.push(Type::$tp); )*
-            Signature::Proc{name: Span::new_extra($name, BUILTIN_FILE_NAME), args: v}
+            ($name, Signature::Proc{name: &Span::new_extra($name, BUILTIN_FILE_NAME), args: &v})
         }
     };
     ($name:literal) => {
-        Signature::Proc{name: Span::new_extra($name, BUILTIN_FILE_NAME), args: Vec::new()}
+        ($name, Signature::Proc{name: &Span::new_extra($name, BUILTIN_FILE_NAME), args: &Vec::new()})
     };
 }
 
 macro_rules! func{
     ($name:literal,$ret:ident,$($tp:ident),*) => {
         {
-            let mut v: Vec<Type> = Vec::new();
-            $( v.push(Type::$tp); )*
-            Signature::Func{name: Span::new_extra($name, BUILTIN_FILE_NAME), args: v, rettype: Type::$ret}
+            let mut v: Vec<ArgDef> = Vec::new();
+            $( v.push(ArgDef{name: Span::from("  "), argtype: Type::$tp}); )*
+            ($name, Signature::Func{name: &Span::new_extra($name, BUILTIN_FILE_NAME), args: &v, rettype: Type::$ret, referenced_symbols: Vec::new()})
         }
     };
     ($name:literal,$ret:ident) => {
-        Signature::Func{name: Span::new_extra($name, BUILTINS_FILE_NAME), rettype: Type::$ret, args: Vec::new()}
+        ($name, Signature::Func{name: &Span::new_extra($name, BUILTINS_FILE_NAME), rettype: Type::$ret, args: &Vec::new()})
     }
 }
 
@@ -44,10 +45,10 @@ macro_rules! strs{
 }
 
 macro_rules! strsn{
-    ($l:literal,$r:literal) => {(String::from($l), format!(".addNormalBlock([&] (Sequence& callingSequence) {{{}}})\n", $r))}
+    ($l:literal,$r:literal) => {($l, format!(".addNormalBlock([&] (Sequence& callingSequence) {{{}}})\n", $r))}
 }
-pub const BUILTINS: Vec<Signature> = [
-    Signature::Event{name: span!("start")},
+pub const BUILTINS: HashMap<&str, Signature> = [
+    ("start", Signature::Event{name: &span!("start")}),
     proc!("move", Num, Num),
     proc!("moveTo", Num, Num),
     proc!("graphic", Int),
@@ -62,10 +63,10 @@ pub const BUILTINS: Vec<Signature> = [
     func!("truncate", Int, Num),
     func!("intToStr", Str, Int),
     func!("randInt", Int, Int, Int),
-    func!("random", Num, Num, Num)
-].to_vec();
+    func!("rand", Num, Num, Num)
+].to_vec().into_iter().collect();
 
-pub const BUILTIN_SUBS: HashMap<String, String> = [
+pub const BUILTIN_SUBS: HashMap<&str, String> = [
     strsn!("move", "callingSequence.setPositionX(callingSequence.positionX() + $0); callingSequence.setPositionY(callingSequence.positionX + $1);"),
     strsn!("moveTo", "callingSequence.setPositionX($0); callingSequence.setPositionY($1);"),
     strsn!("graphic", "callingSequence.setGraphic($0);"),
@@ -99,3 +100,18 @@ pub const UNARY_OPERATORS: HashMap<&str, Vec<(Type, Type)>> = [
     ("-", vec!((Type::Int, Type::Int), (Type::Num, Type::Num))),
     ("!", vec!((Type::Bool, Type::Bool)))
 ].to_vec().into_iter().collect();
+
+pub const BINARY_OP_SUB: HashMap<&str, &str> = vec![
+    ("+","+"),
+    ("-","-"),
+    ("*","*"),
+    ("/","/"),
+    ("=","=="),
+    ("&","&&"),
+    ("|","||")
+].into_iter().collect();
+
+pub const UNARY_OP_SUB: HashMap<&str,&str> = vec![
+    ("-","-"),
+    ("!","!")
+].into_iter().collect();

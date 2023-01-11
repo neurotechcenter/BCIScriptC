@@ -62,7 +62,7 @@ enum SymbolType {
 
 pub fn verify(p: &Program) -> Result<(), Vec<CError>> {
     let signatures = verify_declarations(p)?;
-    let ver_errs = verify_definitions(&mut p, &signatures);
+    let ver_errs = verify_definitions(&mut p, vec!(&signatures, &BUILTINS));
     return if !ver_errs.is_empty() {Err(ver_errs)} else {Ok(())};
 }
 
@@ -83,7 +83,7 @@ fn verify_declarations<'a>(p: &Program) -> Result<Signatures<'a>, Vec<CError>> {
         return Err(errs_from_onevent);
     }
 
-    let mut signatures: Signatures = BUILTINS.clone().into_iter().map(|s| (s.str(), s)).collect(); //builtin signatures
+    let mut signatures: Signatures = HashMap::new(); 
     let mut errs: Vec<CError> = Vec::new();
 
     for def in p {
@@ -221,18 +221,18 @@ fn get_redef_err(sig: &Signature, sigs: &Signatures) -> Vec<CError>
 
 //Verifies definitions and checks for circular definitions.
 //Returs a vec containing all errors found
-fn verify_definitions(p: &mut Program, sigs: &Signatures) -> Vec<CError>  {
+fn verify_definitions(p: &mut Program, sigs: Vec<&Signatures>) -> Vec<CError>  {
     let mut errs = p.iter_mut().filter(|d| match d {Def::Actor{..} => false, _ => true})
-        .flat_map(|d| match verify_definition(d, vec!(sigs)) {Ok(()) => Vec::new(), Err(e) => e})
+        .flat_map(|d| match verify_definition(d, sigs) {Ok(()) => Vec::new(), Err(e) => e})
         .collect::<Vec<CError>>();
     //Actors must be verified last because of how the circular definition check works (this is
     //because all expressions must be verified before any circular definition checking
     //happens.)
     let mut errsact = p.iter_mut().filter(|d| match d {Def::Actor{..} => true, _ => false})
-        .flat_map(|d| match verify_definition(d, vec!(sigs)) {Ok(()) => Vec::new(), Err(e) => e})
+        .flat_map(|d| match verify_definition(d, sigs) {Ok(()) => Vec::new(), Err(e) => e})
         .collect::<Vec<CError>>();
     errs.append(&mut errsact);
-    let mut errscirc = p.iter().filter(|d| match d {Def::Var{..} | Def::Func{..} => true, _ => false}).map(|d| check_circular_def(d, vec!(sigs)))
+    let mut errscirc = p.iter().filter(|d| match d {Def::Var{..} | Def::Func{..} => true, _ => false}).map(|d| check_circular_def(d, sigs))
         .fold(Vec::new(), |l, r| {l.append(&mut r); return l;});
     errs.append(&mut errscirc);
     return errs;

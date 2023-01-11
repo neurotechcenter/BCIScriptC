@@ -17,8 +17,8 @@ pub enum Def<'a> {
     Timer{name: Id<'a>},
     State{name: Id<'a>, statetype: StateType},
     Var{name: Id<'a>, vartype: Option<Type>, value: Option<Expr<'a>>},
-    Graphics{files: Vec<StrLit<'a>>},
-    Sounds{files: Vec<StrLit<'a>>}
+    Graphics{files: Vec<Literal<'a>>},
+    Sounds{files: Vec<Literal<'a>>}
 }
 
 /**
@@ -27,7 +27,7 @@ pub enum Def<'a> {
 pub type Seq<'a> = Vec<Stm<'a>>;
 
 pub enum Stm<'a> {
-    Call{id: Id<'a>, args: Vec<Expr<'a>>},
+    Call{id: Id<'a>, args: Vec<Expr<'a>>, is_builtin: Option<bool>},
     Assign{id: Id<'a>, val: Expr<'a>},
     Var{name: Id<'a>, vartype: Option<Type>, value: Option<Expr<'a>>},
     Timer{name: Id<'a>, cmd: TimerCmd},
@@ -108,10 +108,20 @@ pub enum Value<'a> {
 }
 
 pub enum Literal<'a>{
-    IntLiteral(IntLit<'a>),
-    NumLiteral(NumLit<'a>),
-    BoolLiteral(BoolLit<'a>),
-    StringLiteral(StrLit<'a>)
+    IntLiteral(Span<'a>),
+    NumLiteral(Span<'a>),
+    BoolLiteral(Span<'a>),
+    StringLiteral(Span<'a>)
+}
+impl Literal<'_> {
+    pub fn str(&self) -> &str {
+        match self {
+            Self::IntLiteral(i) => i.fragment(),
+            Self::NumLiteral(i) => i.fragment(),
+            Self::BoolLiteral(i) => i.fragment(),
+            Self::StringLiteral(i) => i.fragment(),
+        }
+    }
 }
 
 /**
@@ -119,24 +129,10 @@ pub enum Literal<'a>{
  */
 pub struct FuncCall<'a> {
     pub id: Id<'a>,
-    pub args: Vec<Expr<'a>>
-}
-/*
-pub enum BinOp<'a> {
-    Add(Add<'a>),
-    Sub(Sub<'a>),
-    Mult(Mult<'a>),
-    Div(Div<'a>),
-    And(And<'a>),
-    Or(Or<'a>),
-    Eqs(Eqs<'a>)
+    pub args: Vec<Expr<'a>>,
+    pub is_builtin: Option<bool>
 }
 
-pub enum UnOp<'a>{
-    Neg(Neg<'a>),
-    Not(Not<'a>)
-}
-*/
 
 pub type BinOp<'a> = Span<'a>;
 pub type UnOp<'a> = Span<'a>;
@@ -147,24 +143,3 @@ pub type UnOp<'a> = Span<'a>;
  */
 //An identifier
 pub type Id<'a> = Span<'a>;
-
-/**
- * Data value types
- */
-pub type IntLit<'a> = Span<'a>;
-pub type NumLit<'a> = Span<'a>;
-pub type BoolLit<'a> = Span<'a>;
-pub type StrLit<'a> = Span<'a>;
-
-/**
- * Operators
- */
-pub type Add<'a> = Span<'a>;
-pub type Sub<'a> = Span<'a>;
-pub type Mult<'a> = Span<'a>;
-pub type Div<'a> = Span<'a>;
-pub type And<'a> = Span<'a>;
-pub type Or<'a> = Span<'a>;
-pub type Eqs<'a> = Span<'a>;
-pub type Neg<'a> = Span<'a>;
-pub type Not<'a> = Span<'a>;

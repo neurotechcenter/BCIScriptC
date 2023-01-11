@@ -7,7 +7,7 @@ use nom::{
     branch::alt,
     sequence::delimited,
     sequence::tuple,
-    character::complete::multispace0,
+    character::complete::{multispace0, one_of},
     character::{complete::char, streaming::none_of},
     character::complete::{alpha1, digit0},
     character::complete::alphanumeric0,
@@ -18,7 +18,7 @@ use nom::{
 use nom_locate::LocatedSpan;
 use crate::ast::*;
 
-type Span<'a> = LocatedSpan<&'a str>;
+type Span<'a> = LocatedSpan<&'a str, String>;
 
 pub fn program(inp: Span) -> Result<Program, Box<dyn std::error::Error>> {
     Ok(tuple((multispace0, many0(def), eof))(inp)?.1.1)
@@ -32,7 +32,11 @@ fn def(inp: Span) -> IResult<Span, Def> {
         func,
         event,
         state,
-        var))(inp)
+        timer_def,
+        var,
+        graphics,
+        sounds,
+        stateevent))(inp)
 }
 
 fn actor(inp: Span) -> IResult<Span, Def> { 
@@ -65,8 +69,18 @@ fn state(inp: Span) -> IResult<Span, Def> {
     Ok((rest, Def::State{name: val.1, statetype: val.2}))
 }
 
+fn timer_def(inp: Span) -> IResult<Span, Def> {
+    let (rest, val) = tuple((tag("timer "), id))(inp)?;
+    Ok((rest, Def::Timer { name: val.1 }))
+}
+
+fn stateevent(inp: Span) -> IResult<Span, Def> {
+    let (rest, val) = tuple((tag("stateevent "), id))(inp)?;
+    Ok((rest, Def::StateEvent { name: val.1 }))
+}
+
 fn var(inp: Span) -> IResult<Span, Def> {
-    let (rest, val) = tuple((tag("var "), id, opt(tuple((lex(char(':')), data_type))), opt(tuple((lex(char('=')), literal))), semi))(inp)?;
+    let (rest, val) = tuple((tag("var "), id, opt(tuple((lex(char(':')), data_type))), opt(tuple((lex(char('=')), expr))), semi))(inp)?;
     Ok((rest, Def::Var{name: val.1, 
         vartype: 
             match val.2{ //output if opt(tuple(a,b))) where a is ':' and b is data_type
@@ -110,6 +124,58 @@ fn stm (inp: Span) -> IResult<Span, Stm> {
         ))(inp)
 }
 
+fn callevent(inp: Span) -> IResult<Span, Stm> {
+    let (out, val) = tuple((tag("call"), opt(alt((ev_type_b, ev_type_s))), id))(inp)?;
+    Ok((out, Stm::CallEvent { tp: val.1, name: val.2 }))
+}
+
+fn ev_type_b(inp: Span) -> IResult<Span, EvType> {
+    let (out, val) = tag(".b")(inp)?;
+    Ok((out, EvType::BCISEvent))
+}
+
+fn ev_type_s(inp: Span) -> IResult<Span, EvType> {
+    let (out, val) = tag(".s")(inp)?;
+    Ok((out, EvType::StateEvent))
+}
+
+fn timer(inp: Span) -> IResult<Span, Stm> {
+    let (out, val) = tuple((tag("timer."), timer_cmd, id))(inp)?;
+    Ok((out, Stm::Timer { name: val.2, cmd: val.1 }))
+}
+
+fn timer_cmd(inp: Span) -> IResult<Span, TimerCmd> {
+    alt((timer_cmd_add, timer_cmd_stop, timer_cmd_start, timer_cmd_reset, timer_cmd_read))(inp)
+}
+
+fn timer_cmd_add(inp: Span) -> IResult<Span, TimerCmd> {
+    let (out, val) = tag("add.")(inp)?;
+    Ok((out, TimerCmd::Add))
+}
+
+fn timer_cmd_stop(inp: Span) -> IResult<Span, TimerCmd> {
+    let (out, val) = tag("stop.")(inp)?;
+    Ok((out, TimerCmd::Stop))
+}
+
+fn timer_cmd_start(inp: Span) -> IResult<Span, TimerCmd> {
+    let (out, val) = tag("start.")(inp)?;
+    Ok((out, TimerCmd::Start))
+}
+
+fn timer_cmd_reset(inp: Span) -> IResult<Span, TimerCmd> {
+    let (out, val) = tag("reset.")(inp)?;
+    Ok((out, TimerCmd::Reset))
+}
+
+fn timer_cmd_read(inp: Span) -> IResult<Span, TimerCmd> {
+    let (out, val) = tag("read.")(inp)?;
+    Ok((out, TimerCmd::Read))
+}
+
+
+
+
 fn call(inp: Span) -> IResult<Span, Stm>{
     let (out, val) = tuple((id, arg_list, semi))(inp)?;
     Ok((out, Stm::Call{id: val.0, args: val.1}))
@@ -122,12 +188,12 @@ fn assign(inp: Span) -> IResult<Span, Stm>{
 
 fn loop_repeat(inp: Span) -> IResult<Span, Stm> {
     let (out, val) = tuple((tag("repeat"), expr, block_sequence))(inp)?;
-    Ok((out, Stm::Repeat{val: val.1, seq: val.2}))
+    Ok((out, Stm::Repeat{kw: val.0, val: val.1, seq: val.2}))
 }
 
 fn loop_while(inp: Span) -> IResult<Span, Stm> {
     let (out, val) = tuple((tag("while"), expr, block_sequence))(inp)?;
-    Ok((out, Stm::While{cond: val.1, seq: val.2}))
+    Ok((out, Stm::While{kw: val.0, cond: val.1, seq: val.2}))
 }
 
 fn local_var(inp: Span) -> IResult<Span, Stm> {
@@ -148,14 +214,14 @@ fn local_var(inp: Span) -> IResult<Span, Stm> {
 
 fn cond_if(inp: Span) -> IResult<Span, Stm> {
     let (out, val) = tuple((tag("if"), expr, block_sequence))(inp)?;
-    Ok((out, Stm::If{cond: val.1, seq: val.2}))
+    Ok((out, Stm::If{kw: val.0, cond: val.1, seq: val.2}))
 }
 
 fn cond_ifelse(inp: Span) -> IResult<Span, Stm> {
     let (out, val) = tuple((tag("if"), expr, block_sequence,  many0(else_if), opt(tuple((tag("else"), block_sequence)))))(inp)?;
-    Ok((out, Stm::IfElse{cond: val.1, seq: val.2, elifs: val.3, elseq: 
+    Ok((out, Stm::IfElse{kw: val.0, cond: val.1, seq: val.2, elifs: val.3, elseq: 
         match val.4 {
-            Some((a, b)) => b?,
+            Some((a, b)) => b,
             None => Vec::new()
         }
     }))
@@ -163,12 +229,12 @@ fn cond_ifelse(inp: Span) -> IResult<Span, Stm> {
 
 fn else_if(inp: Span) -> IResult<Span, ElseIf> {
     let (out, val) = tuple((tag("else if"), expr, block_sequence))(inp)?;
-    Ok((out, ElseIf{cond: val.1, seq: val.2}))
+    Ok((out, ElseIf{kw: val.0, cond: val.1, seq: val.2}))
 }
 
 fn timed(inp: Span) -> IResult<Span, Stm> {
     let (out, val) = tuple((tag("timed"), expr, block_sequence))(inp)?;
-    Ok((out, Stm::Timed{time: val.1, seq: val.2}))
+    Ok((out, Stm::Timed{kw: val.0, time: val.1, seq: val.2}))
 }
 
 
@@ -196,7 +262,7 @@ fn state_type(inp: Span) -> IResult<Span, StateType> {
      x if x == &"i8" => Ok((out, StateType::I8)),
      x if x == &"u32" => Ok((out, StateType::U32)),
      x if x == &"i32" => Ok((out, StateType::I32)),
-     _ => Err(nom::Err::Failure(nom::error::Error::new(Span::new("This error should not happen"), nom::error::ErrorKind::Fail )))
+     _ => unreachable!()
     }
 }
 
@@ -208,30 +274,30 @@ fn data_type(inp: Span) -> IResult<Span, Type> {
         x if x == &"int" => Ok((out, Type::Int)),
         x if x == &"num" => Ok((out, Type::Num)),
         x if x == &"str" => Ok((out, Type::Str)),
-        _ => Err(nom::Err::Failure(nom::error::Error::new(Span::new("This error should not happen"), nom::error::ErrorKind::Fail )))
+        _ => unreachable!()
     
     }
 }
 
 
 fn expr(inp: Span) -> IResult<Span, Expr> {
-    alt((bin_ex, un_ex, func_call, var_call, literal_expr))(inp)
+    alt((bin_ex, un_ex, func_call, var_call, literal_expr, timer_call))(inp)
 }
 
 fn bin_ex(inp: Span) -> IResult<Span, Expr> {
     let (out, binex) =
         alt((
-        tuple((delimited(lex(char('(')), expr, lex(char(')'))),  bin_op, expr)),
-        tuple((expr, bin_op, delimited(lex(char('(')), expr, char(')')))),
-        tuple((expr, bin_op, expr))
+        tuple((delimited(lex(char('(')), expr, lex(char(')'))), lex(bin_op), expr)),
+        tuple((expr, lex(bin_op), delimited(lex(char('(')), expr, char(')')))),
+        tuple((expr, lex(bin_op), expr))
         ))(inp)?;
     Ok((out, Expr{expr: UExpr::BinExpr{l: Box::new(binex.0), op: binex.1, r: Box::new(binex.2)}, exprtype: None}))
 }
 
 fn un_ex(inp: Span) -> IResult<Span, Expr> {
     let (out, unex) = alt((
-            tuple((un_op, delimited(lex(char('(')), expr, lex(char(')'))))),
-            tuple((un_op, expr))
+            tuple((lex(un_op), delimited(lex(char('(')), expr, lex(char(')'))))),
+            tuple((lex(un_op), expr))
             ))(inp)?;
     Ok((out, Expr{expr: UExpr::UnExpr{op: unex.0, expr: Box::new(unex.1)}, exprtype:None}))
 }
@@ -246,11 +312,23 @@ fn var_call(inp: Span) -> IResult<Span, Expr> {
     Ok((out, Expr{expr: UExpr::Value(Value::VarCall(val)), exprtype: None}))
 }
 
+fn timer_call(inp: Span) -> IResult<Span, Expr> {
+    let (out, val) = tuple((tag("timer."), timer_cmd, id))(inp)?;
+    Ok((out, Expr{ expr: UExpr::Value(Value::TimerCall { name: val.2, cmd: val.1 }), exprtype: Some(Type::Num)}))
+}
+
 fn literal_expr(inp: Span) -> IResult<Span, Expr> {
     let (out, val) = literal(inp)?;
     Ok((out, Expr{expr: UExpr::Value(Value::Literal(val)), exprtype: None}))
 }
 
+fn un_op(inp: Span) -> IResult<Span, UnOp> {
+    alt((tag("-"), tag("!")))(inp)
+}
+
+fn bin_op(inp: Span) -> IResult<Span, UnOp> {
+    alt((tag("+"), tag("-"),tag("*"),tag("/"),tag("&"),tag("|"),tag("="),tag(">"),tag("<")))(inp)
+}
 
 fn literal(inp: Span) -> IResult<Span, Literal> {
     alt((
@@ -279,7 +357,7 @@ fn num_lit(inp: Span) -> IResult<Span, Literal> {
     full.push(val.1);
     full.push_str(val.2.fragment());
     unsafe { //Don't know of any way to concatenate LocatedSpan s without unsafe block
-        Ok((out, Literal::BoolLiteral(Span::new_from_raw_offset(val.2.location_offset(), val.2.location_line(), &full, val.2.extra))))
+        Ok((out, Literal::NumLiteral(Span::new_from_raw_offset(val.2.location_offset(), val.2.location_line(), &full, val.2.extra))))
     }
 }
 
