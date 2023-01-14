@@ -28,9 +28,9 @@ pub fn generate_program<'a>(program: Program<'a>) -> String {
 fn gen_def<'a>(def: Def<'a>) -> String { //The unwrapped values here should never be None, so a
                                           //panic here can only arise from a bug in the code.
     match def {
-        Def::Var { name, vartype, value } => gen_var(name, value),
+        Def::Var { name, vartype, value, init_priority } => gen_var(name, value, init_priority.unwrap()),
         Def::Proc { name, args, seq } => gen_proc(name, args, seq),
-        Def::Func { name, args, rettype, expr } => gen_func(name, args, rettype, expr),
+        Def::Func { name, args, rettype, expr, .. } => gen_func(name, args, rettype, expr),
         Def::Actor { name, members } => gen_actor(name, members),
         Def::Event { name } => gen_event(name),
         Def::State { name, statetype } => gen_state(name, statetype),
@@ -40,10 +40,10 @@ fn gen_def<'a>(def: Def<'a>) -> String { //The unwrapped values here should neve
     } 
 }
 
-fn gen_var(name: Id, value: Option<Expr>) -> String {
+fn gen_var(name: Id, value: Option<Expr>, init_priority: u64) -> String {
     format!(".addVariable(\"{}\"{})", name.fragment(),
         match value {
-            Some(e) => format!(", [&] (SequenceEnvironment &callingSequence){}", gen_expr(e)),
+            Some(e) => format!(", [&] (SequenceEnvironment &callingSequence){{{}}}, {}", gen_expr(e), init_priority),
             None => String::new()
         }
     )
@@ -95,9 +95,9 @@ fn gen_timer( name: Id ) -> String {
 
 fn gen_actor_def(def: Def) -> String {
     match def {
-        Def::Var { name, vartype, value } => indent1(2, gen_var(name,  value)),
+        Def::Var { name, vartype, value, init_priority } => indent1(2, gen_var(name, value, init_priority.unwrap())),
         Def::Proc { name, args, seq } => gen_proc(name, args, seq),
-        Def::Func { name, args, rettype, expr } => gen_func(name, args, rettype, expr),
+        Def::Func { name, args, rettype, expr, .. } => gen_func(name, args, rettype, expr),
         Def::Sounds { files } => files.iter().map(|f| indent1(2, format!(".addSound(std::vector<std::string>> {})", f.str()))).fold(String::new(), |l, r| format!("{}\n{}", l, r)),
         Def::Graphics { files } => files.iter().map(|f| indent1(2, format!(".addGraphic({})", f.str()))).fold(String::new(), |l, r| format!("{}\n{}", l, r)),
         Def::OnEvent { name, seq } => indent1(2, format!(".addEventListener(new EventListener(ProtoSequence(){}))", gen_seq(seq))),

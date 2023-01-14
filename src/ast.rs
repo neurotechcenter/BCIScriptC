@@ -11,12 +11,12 @@ pub enum Def<'a> {
     Actor{name: Id<'a>, members: Vec<Def<'a>>},
     OnEvent{name: Id<'a>, seq: Seq<'a>},
     Proc{name: Id<'a>, args: Vec<ArgDef<'a>>, seq: Seq<'a>},
-    Func{name: Id<'a>, args: Vec<ArgDef<'a>>, rettype: Type, expr: Expr<'a>},
+    Func{name: Id<'a>, args: Vec<ArgDef<'a>>, rettype: Type, expr: Expr<'a>, init_priority: Option<u64>},
     Event{name: Id<'a>},
     StateEvent{name: Id<'a>},
     Timer{name: Id<'a>},
     State{name: Id<'a>, statetype: StateType},
-    Var{name: Id<'a>, vartype: Option<Type>, value: Option<Expr<'a>>},
+    Var{name: Id<'a>, vartype: Option<Type>, value: Option<Expr<'a>>, init_priority: Option<u64>},
     Graphics{files: Vec<Literal<'a>>},
     Sounds{files: Vec<Literal<'a>>}
 }

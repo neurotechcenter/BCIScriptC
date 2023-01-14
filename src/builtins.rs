@@ -47,7 +47,7 @@ macro_rules! strs{
 macro_rules! strsn{
     ($l:literal,$r:literal) => {($l, format!(".addNormalBlock([&] (Sequence& callingSequence) {{{}}})\n", $r))}
 }
-pub const BUILTINS: HashMap<&str, Signature> = [
+pub const BUILTINS_GLOBAL: HashMap<&str, Signature> = [
     ("start", Signature::Event{name: &span!("start")}),
     proc!("move", Num, Num),
     proc!("moveTo", Num, Num),
@@ -64,6 +64,10 @@ pub const BUILTINS: HashMap<&str, Signature> = [
     func!("intToStr", Str, Int),
     func!("randInt", Int, Int, Int),
     func!("rand", Num, Num, Num)
+].to_vec().into_iter().collect();
+
+pub const BUILTINS_ACTOR: HashMap<&str, Signature> = [
+
 ].to_vec().into_iter().collect();
 
 pub const BUILTIN_SUBS: HashMap<&str, String> = [
