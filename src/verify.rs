@@ -22,13 +22,13 @@ pub enum Signature<'a>{
     Func{name: &'a Id<'a>, args: &'a Vec<ArgDef<'a>>, rettype: Type, referenced_symbols: Vec<(&'a Id<'a>, SymbolType)>, is_builtin: bool },
     Event{name: &'a Id<'a>},
     State{name: &'a Id<'a>, statetype: &'a StateType},
-    Var{name: &'a Id<'a>, vartype: Type, referenced_symbols: Vec<(&'a Id<'a>, SymbolType)>},
+    Var{name: &'a Id<'a>, vartype: Type, referenced_symbols: Vec<(&'a Id<'a>, SymbolType)>, initialized: bool},
     StateEvent{name: &'a Id<'a>},
     Timer{name: &'a Id<'a>},
 }
 
 impl Signature<'_> {
-    pub fn name(&self) -> &Span{
+    pub fn name(&self) -> &Token{
         match self {
             Signature::Actor{name, ..} => name,
             Signature::OnEvent{name} => name,
@@ -41,8 +41,8 @@ impl Signature<'_> {
             Signature::Timer { name } => name,
         }
     }
-    pub fn str(&self) -> &str {
-        self.name().fragment()
+    pub fn str(&'_ self) -> &'_ str {
+        &self.name().content
     }
     pub fn string(&self) -> String {
         String::from(self.str())
@@ -51,7 +51,7 @@ impl Signature<'_> {
 
 impl PartialEq for Signature<'_>{
     fn eq(&self, other: &Signature) -> bool {
-        self.name().fragment() == other.name().fragment()  
+        self.name().content == other.name().content  
     } 
 }
 
@@ -131,7 +131,7 @@ fn verify_declaration<'a>(d: &Def<'a>, sigs: &Signatures) -> Result<Signature<'a
 }
 
 fn not_already_declared(name: &Id, sigs: &Signatures) -> Result<(), Vec<CError>> {
-    match sigs.get(name.fragment()) {
+    match sigs.get(name.content.as_str()) {
         Some(s) => Err(vec!(err_redefinition1(name, s))),
         None => Ok(())
     }
@@ -145,7 +145,7 @@ fn verify_dec_variable<'a>(name: &Id, vartype: &Option<Type>, expr: &Option<Expr
                 Some(expr) => get_referenced_symbols(expr),
                 None => Vec::new()
                 }
-        }),
+        , initialized: expr.is_some()}),
         None => Err(vec!(generic_err(name, "Member variables must have an explicit type")))
     }
 }
@@ -264,7 +264,7 @@ fn verify_definition(d: &mut Def, sigs: Vec<&Signatures>) -> Result<(), Vec<CErr
 }
 
 fn verify_def_actor(name: &Id, members: &mut Vec<Def>, sigs: Vec<&Signatures>) -> Result<(), Vec<CError>> {
-    let mut local_sigs = match lookup_sig1(sigs, name.fragment(), |s| match s {Signature::Actor{..} => true, _ => false}) {
+    let mut local_sigs = match lookup_sig1(sigs, &name.content, |s| match s {Signature::Actor{..} => true, _ => false}) {
         Some(Signature::Actor { name, locals }) => locals,
         _ => panic!("Actor's signature not found.")
     };
@@ -299,8 +299,8 @@ fn verify_def_var(name: &Id, vartype: &Option<Type>, value: &mut Option<Expr>, s
 }
 
 fn verify_def_func(name: &Id, args: &Vec<ArgDef>, rettype: Type, value: &mut Expr, ext_sigs: Vec<&Signatures>) -> Result<(), Vec<CError>> {
-    let sigs = vec!(&args.iter().map(|d| (*d.name.fragment(), Signature::Var { name, vartype: d.argtype, referenced_symbols: Vec::new() })).collect::<Signatures>());
-    sigs.append(&mut ext_sigs);
+    let sigs = vec!(&args.iter().map(|d| (d.name.content.as_str(), Signature::Var { name, vartype: d.argtype, referenced_symbols: Vec::new(), initialized: true })).collect::<Signatures>());
+    sigs.append(&mut ext_sigs.clone());
     
 
     verify_expr(value, sigs)?; 
@@ -314,7 +314,7 @@ fn verify_def_func(name: &Id, args: &Vec<ArgDef>, rettype: Type, value: &mut Exp
 }
 
 fn verify_def_proc(name: &Id, args: &Vec<ArgDef>, seq: &mut Seq, ext_sigs: Vec<&Signatures>) -> Result<(), Vec<CError>> {
-    let sigs = vec!(&args.iter().map(|d| (*d.name.fragment(), Signature::Var { name, vartype: d.argtype, referenced_symbols: Vec::new() })).collect::<Signatures>());
+    let sigs = vec!(&args.iter().map(|d| (d.name.content.as_str(), Signature::Var { name, vartype: d.argtype, referenced_symbols: Vec::new(), initialized: true })).collect::<Signatures>());
     sigs.append(&mut ext_sigs);
 
     verify_seq(seq, sigs)
@@ -361,14 +361,14 @@ fn verify_stmt<'a>(stmt: &mut Stm<'a>, sigs: Vec<&Signatures>) -> Result<Option<
 fn verify_stm_callevent<'a>(tp: &mut Option<EvType>, name: &Id<'a>, sigs: Vec<&Signatures>) -> Result<Option<(&'a str, Signature<'a>)>, Vec<CError>> {
     match tp {
         Some(EvType::BCISEvent) => {
-            match lookup_sig1(sigs, name, |s| match s {Signature::Event{..} => true, _ => false}) {
+            match lookup_sig1(sigs, &name.content, |s| match s {Signature::Event{..} => true, _ => false}) {
                 Some(Signature::Event {..}) => Ok(None),
                 Some(_) => unreachable!(),
                 None => Err(vec!(err_undeclared_id(name, "Event")))
             }
         }
         Some(EvType::StateEvent) => {
-            match lookup_sig1(sigs, name, |s| match s {Signature::StateEvent{..} => true, _ => false}) {
+            match lookup_sig1(sigs, &name.content, |s| match s {Signature::StateEvent{..} => true, _ => false}) {
                 Some(Signature::Event {..}) => Ok(None),
                 Some(_) => unreachable!(),
                 None => Err(vec!(err_undeclared_id(name, "StateEvent")))
@@ -376,15 +376,15 @@ fn verify_stm_callevent<'a>(tp: &mut Option<EvType>, name: &Id<'a>, sigs: Vec<&S
         }
 
         None => {  
-            match (lookup_sig1(sigs, name, |s| match s {Signature::Event{..} => true, _ => false}),
-                    lookup_sig1(sigs, name, |s| match s {Signature::StateEvent{..} => true, _ => false})) {
+            match (lookup_sig1(sigs, &name.content, |s| match s {Signature::Event{..} => true, _ => false}),
+                    lookup_sig1(sigs, &name.content, |s| match s {Signature::StateEvent{..} => true, _ => false})) {
 
                 (None, None) => Err(vec!(err_undeclared_id(name, "Event or stateevent"))),
                 (Some(Signature::Event { name }), None) => {tp.insert(EvType::BCISEvent); Ok(None)},
                 (None, Some(Signature::StateEvent { name })) => {tp.insert(EvType::StateEvent); Ok(None)},
                 (Some(Signature::Event{..}), Some(Signature::StateEvent{..})) => {
                     Err(vec!(generic_err(name, format!("both an event and stateevent with the name {} exist within the current namespace.
-                        add \".b\" or \".s\" to \"call\" to specify whether you want to call a BCIScript event or a StateEvent.", name.fragment()).as_str())))
+                        add \".b\" or \".s\" to \"call\" to specify whether you want to call a BCIScript event or a StateEvent.", name.content).as_str())))
                 }
                 _ => unreachable!()
             }
@@ -392,7 +392,7 @@ fn verify_stm_callevent<'a>(tp: &mut Option<EvType>, name: &Id<'a>, sigs: Vec<&S
     }
 }
 
-fn verify_stm_if_else<'a>(kw: &Span<'a>, cond: &mut Expr, seq: &mut Seq, elifs: &mut Vec<ElseIf>, elseq: &mut Seq, sigs: Vec<&Signatures>) 
+fn verify_stm_if_else<'a>(kw: &Token<'a>, cond: &mut Expr, seq: &mut Seq, elifs: &mut Vec<ElseIf>, elseq: &mut Seq, sigs: Vec<&Signatures>) 
     -> Result<Option<(&'a str, Signature<'a>)>, Vec<CError>> {
         let errs:Vec<CError> = Vec::new();
         match &mut verify_expr(cond, sigs) {
@@ -421,7 +421,7 @@ fn verify_else_if<'a>(elif: &mut ElseIf, sigs: Vec<&Signatures>) -> Result<(), V
     }
 }
 
-fn verify_stm_timed<'a>(kw: &Span<'a>, val: &mut Expr, seq: &mut Seq, sigs: Vec<&Signatures>) -> Result<Option<(&'a str, Signature<'a>)>, Vec<CError>> {
+fn verify_stm_timed<'a>(kw: &Token<'a>, val: &mut Expr, seq: &mut Seq, sigs: Vec<&Signatures>) -> Result<Option<(&'a str, Signature<'a>)>, Vec<CError>> {
     verify_expr(val, sigs)?;
     return if !type_match(val.exprtype.unwrap(), Type::Num) {
         Err(vec!(generic_err(kw, format!("repeat expects expression of type num, but was given expression of type {}", val.exprtype.unwrap().bcis_rep()).as_str())))
@@ -431,7 +431,7 @@ fn verify_stm_timed<'a>(kw: &Span<'a>, val: &mut Expr, seq: &mut Seq, sigs: Vec<
     
 }
 
-fn verify_stm_repeat<'a>(kw: &Span<'a>, val: &mut Expr, seq: &mut Seq, sigs: Vec<&Signatures>) -> Result<Option<(&'a str, Signature<'a>)>, Vec<CError>> {
+fn verify_stm_repeat<'a>(kw: &Token<'a>, val: &mut Expr, seq: &mut Seq, sigs: Vec<&Signatures>) -> Result<Option<(&'a str, Signature<'a>)>, Vec<CError>> {
     verify_expr(val, sigs)?;
     return if !type_match(val.exprtype.unwrap(), Type::Int) {
         Err(vec!(generic_err(kw, format!("repeat expects expression of type int, but was given expression of type {}", val.exprtype.unwrap().bcis_rep()).as_str())))
@@ -440,7 +440,7 @@ fn verify_stm_repeat<'a>(kw: &Span<'a>, val: &mut Expr, seq: &mut Seq, sigs: Vec
     }
 }
 
-fn verify_stm_while<'a>(kw: &Span<'a>, cond: &mut Expr, seq: &mut Seq, sigs: Vec<&Signatures>) -> Result<Option<(&'a str, Signature<'a>)>, Vec<CError>> {
+fn verify_stm_while<'a>(kw: &Token<'a>, cond: &mut Expr, seq: &mut Seq, sigs: Vec<&Signatures>) -> Result<Option<(&'a str, Signature<'a>)>, Vec<CError>> {
     verify_expr(cond, sigs)?;
     return if !(type_match(cond.exprtype.unwrap(), Type::Bool)) {
         Err(vec!(generic_err(kw, format!("while expects expression of type bool, but was given expression of type {}", cond.exprtype.unwrap().bcis_rep()).as_str())))
@@ -450,8 +450,8 @@ fn verify_stm_while<'a>(kw: &Span<'a>, cond: &mut Expr, seq: &mut Seq, sigs: Vec
 }
 
 fn verify_stm_assign<'a>(id: &Id<'a>, value: &mut Expr, sigs: Vec<&Signatures>) -> Result<Option<(&'a str, Signature<'a>)>, Vec<CError>> {
-    match lookup_sig1(sigs, id.fragment(), |s| match s {Signature::Var{..} => true, _ => false}) {
-        Some(Signature::Var { name, vartype, referenced_symbols }) => {
+    match lookup_sig1(sigs, &id.content, |s| match s {Signature::Var{..} => true, _ => false}) {
+        Some(Signature::Var { name, vartype, referenced_symbols, .. }) => {
             verify_expr(value, sigs)?;
             if !type_match(value.exprtype.unwrap(), *vartype) {
                 Err(vec!(generic_err(id, format!("Cannot assign value of type {} to variable of type {}", value.exprtype.unwrap().bcis_rep(), vartype.bcis_rep()).as_str())))
@@ -467,10 +467,10 @@ fn verify_stm_assign<'a>(id: &Id<'a>, value: &mut Expr, sigs: Vec<&Signatures>) 
 fn verify_stm_timer<'a>(name: &Id<'a>, cmd: &TimerCmd, sigs: Vec<&Signatures>) -> Result<Option<(&'a str, Signature<'a>)>, Vec<CError>> {
     match cmd {
         TimerCmd::Add => {
-            match lookup_sig_local_any(sigs, name.fragment()) {
+            match lookup_sig_local_any(sigs, &name.content) {
                 Some(s) => Err(vec!(err_redefinition1(name, s))),
                 Some(_) => unreachable!(),
-                None => Ok(Some((name.fragment(), Signature::Timer{ name })))
+                None => Ok(Some((&name.content, Signature::Timer{ name })))
             }
         }
         TimerCmd::Read => Err(vec!(generic_err(name, "Cannot read timer oustide of expression"))),
@@ -479,28 +479,28 @@ fn verify_stm_timer<'a>(name: &Id<'a>, cmd: &TimerCmd, sigs: Vec<&Signatures>) -
 }
 
 fn verify_stm_var<'a>(name: &Id<'a>, vartype: &mut Option<Type>, value: &mut Option<Expr>, sigs: Vec<&Signatures> ) -> Result<Option<(&'a str, Signature<'a>)>, Vec<CError>> {
-    match lookup_sig_local_any(sigs, name.fragment()) {
+    match lookup_sig_local_any(sigs, &name.content) {
         Some(s) => return Err(vec!(err_redefinition1(name, s))),
         None => ()
     }
     match (vartype, value) {
         (None, None) => Err(vec!(generic_err(name, "Variable type cannot be inferred. Either provide an explicit type annotation or initialize the variable."))),
-        (Some(t), None) => Ok(Some((name.fragment(), Signature::Var{name, referenced_symbols: Vec::new(), vartype: *t}))),
+        (Some(t), None) => Ok(Some((&name.content, Signature::Var{name, referenced_symbols: Vec::new(), vartype: *t, initialized: value.is_some()}))),
         (None, Some(e)) => {verify_expr(e, sigs)?;
             vartype.insert(e.exprtype.unwrap());
-            Ok(Some((name.fragment(), Signature::Var{name, referenced_symbols: Vec::new(), vartype: e.exprtype.unwrap()})))
+            Ok(Some((&name.content, Signature::Var{name, referenced_symbols: Vec::new(), vartype: e.exprtype.unwrap(), initialized: value.is_some()})))
         },
         (Some(t), Some(e)) => {verify_expr(e, sigs)?; 
             if !type_match(e.exprtype.unwrap(), *t) {
                 Err(vec!(generic_err(name, format!("Variable is of type {}, but its assignment expression is of type {}", t.bcis_rep(), e.exprtype.unwrap().bcis_rep()).as_str())))
             } else {
-                Ok(Some((name.fragment(), Signature::Var { name, vartype: *t, referenced_symbols: Vec::new() })))
+                Ok(Some((&name.content, Signature::Var { name, vartype: *t, referenced_symbols: Vec::new(), initialized: value.is_some() })))
             }
         }
     }
 }
 
-fn verify_stm_if<'a>(ifs: &Span, cond: &mut Expr, seq: &mut Seq, sigs: Vec<&Signatures>) ->  Result<Option<(&'a str, Signature<'a>)>, Vec<CError>> {
+fn verify_stm_if<'a>(ifs: &Token, cond: &mut Expr, seq: &mut Seq, sigs: Vec<&Signatures>) ->  Result<Option<(&'a str, Signature<'a>)>, Vec<CError>> {
     verify_expr(cond, sigs)?;
     return if type_match(cond.exprtype.unwrap(), Type::Bool) {
         verify_seq(seq, sigs).map(|_| None)
@@ -511,14 +511,14 @@ fn verify_stm_if<'a>(ifs: &Span, cond: &mut Expr, seq: &mut Seq, sigs: Vec<&Sign
 }
 
 fn verify_stm_call<'a>(name: &Id<'a>, call_args: &Vec<Expr>, sigs: Vec<&Signatures>, is_builtin_call: &mut Option<bool>) -> Result<Option<(&'a str, Signature<'a>)>, Vec<CError>> {
-    match lookup_sig1(sigs, name, |s| match s {Signature::Proc{..} => true, _ => false}) {
+    match lookup_sig1(sigs, &name.content, |s| match s {Signature::Proc{..} => true, _ => false}) {
         Some(Signature::Proc { name, args, is_builtin }) => {
             is_builtin_call.insert(is_builtin.clone());
             if call_args.len() == args.len() {
                 let no_match = args.iter().zip(call_args.iter()).any(|(target_type, arg_expr)| !type_match(arg_expr.exprtype.unwrap(), *target_type));
                 return if no_match {
                     Err(vec!(generic_err(name, format!("{} expects parameters of type {}, but was given parameters of type {}",
-                                                     name.fragment(),
+                                                     name.content,
                                                      args.iter().map(|t| t.bcis_rep()).collect::<Vec<String>>().join(", "),
                                                      call_args.iter().map(|e| e.exprtype.unwrap().bcis_rep()).collect::<Vec<String>>().join(", ")).as_str())))
                 }
@@ -562,12 +562,12 @@ fn get_circular_def<'a>(target: &Id<'a>, name: &Id<'a>, t: SymbolType, reference
     match t { //the repeated code between the two branches is because i couldnt just assign the
               //iterator `refs` conditionally because the closures for `filter` would have different types
         SymbolType::Func => {
-            let sig = lookup_sig(sigs, name);
+            let sig = lookup_sig(sigs, &name.content);
             //if a fn is not within this namespace, it cannot cause a circular definition.
             let args = match sig { Some(Signature::Func { args, ..}) => args, _ => return None }; 
-            let argscontains = |n: &Id| args.iter().any(|a| a.name.fragment() == n.fragment());
+            let argscontains = |n: &Id| args.iter().any(|a| a.name.content == n.content);
             let refs = referenced_symbols.iter().filter(|(a, b)| !(b == &SymbolType::Var && argscontains(a)));  //filter out the function parameters
-            let self_ref = refs.find(|(nm, st)| nm == &target && st == &t); 
+            let self_ref = refs.find(|(nm, st)| nm.content == target.content && st == &t); 
                                                                                
             match self_ref {
                 Some(n) => return Some(vec!(n.0)),
@@ -583,9 +583,9 @@ fn get_circular_def<'a>(target: &Id<'a>, name: &Id<'a>, t: SymbolType, reference
                         }
             }
         SymbolType::Var => {
-            if lookup_sig(sigs, name).is_none() {return None};
+            if lookup_sig(sigs, &name.content).is_none() {return None};
             let refs = referenced_symbols.iter();
-            let self_ref = refs.find(|(nm, st)| nm == &target && st == &t); 
+            let self_ref = refs.find(|(nm, st)| nm.content == target.content && st == &t); 
             match self_ref {
                 Some(n) => return Some(vec!(n.0)),
                 None => ()
@@ -606,8 +606,8 @@ fn get_circular_def<'a>(target: &Id<'a>, name: &Id<'a>, t: SymbolType, reference
  * Looks up referenced symbols of def within local namespace.
  */
 fn get_refs_of_def<'a>(name: &Id<'a>,  sigs: &Signatures) -> &'a Vec<(&'a Id<'a>, SymbolType)> {
-    match lookup_sig(sigs, name) {
-        Some(Signature::Var { name, vartype, referenced_symbols }) => referenced_symbols,
+    match lookup_sig(sigs, &name.content) {
+        Some(Signature::Var { name, vartype, referenced_symbols, .. }) => referenced_symbols,
         Some(Signature::Func { name, args, rettype, referenced_symbols, .. }) => referenced_symbols,
         Some(_) => unreachable!(),
         None => &Vec::new()
@@ -652,9 +652,9 @@ fn assign_priorities(defs: &mut Vec<Def>, namespace_signatures: &Signatures) {
 fn get_priority(d: &str, namespace_signatures: &Signatures) -> Option<u64> {
     match namespace_signatures.get(d) {
         Some(Signature::Var { referenced_symbols, .. }) 
-            => referenced_symbols.iter().map(|d| get_priority(d.0.fragment(), namespace_signatures)).fold(Some(0), add_opts),
+            => referenced_symbols.iter().map(|d| get_priority(&d.0.content, namespace_signatures)).fold(Some(0), add_opts),
         Some(Signature::Func { referenced_symbols, .. })
-            => referenced_symbols.iter().map(|d| get_priority(d.0.fragment(), namespace_signatures)).fold(Some(0), |l, r| add_opts(l, r)),
+            => referenced_symbols.iter().map(|d| get_priority(&d.0.content, namespace_signatures)).fold(Some(0), |l, r| add_opts(l, r)),
         Some(_) => panic!("get_priority given invalid type"),
         None => None
     }
@@ -663,8 +663,8 @@ fn get_priority(d: &str, namespace_signatures: &Signatures) -> Option<u64> {
 impl Def<'_> {
     fn fvname(&self) -> &str{
         match self {
-            Def::Func { name, .. } => name.fragment(),
-            Def::Var{ name, .. } => name.fragment(),
+            Def::Func { name, .. } => &name.content,
+            Def::Var{ name, .. } => &name.content,
             _ => unimplemented!()
         }
     }
@@ -705,22 +705,22 @@ fn ver_value(v: &mut Value, sigs: Vec<&Signatures>) -> Result<Type, Vec<CError>>
         Value::Literal(Literal::NumLiteral(_)) => Ok(Type::Num),   
         Value::Literal(Literal::BoolLiteral(_)) => Ok(Type::Bool),   
         Value::Literal(Literal::StringLiteral(_)) => Ok(Type::Str),   
-        Value::VarCall(a) => {match lookup_sig1(sigs, a, |s| match s {Signature::Var{..} => true, _ => false}) {
+        Value::VarCall(a) => {match lookup_sig1(sigs, &a.content, |s| match s {Signature::Var{..} => true, _ => false}) {
             Some(Signature::Var{name, vartype, ..}) => Ok(*vartype),
             Some(_) => unreachable!(),
             None => Err(vec!(err_undeclared_id(a, "variable")))
 
         }}
-        Value::FuncCall(a) => { match lookup_sig1(sigs, &a.id,|s| match s {Signature::Func{..} => true, _ => false}) {
+        Value::FuncCall(a) => { match lookup_sig1(sigs, &a.id.content,|s| match s {Signature::Func{..} => true, _ => false}) {
             Some(Signature::Func { name, args, rettype, is_builtin, .. }) => ver_func_call(&mut a, args, *rettype, sigs, &mut a.is_builtin, *is_builtin),
             Some(_) => unreachable!(),
             None => Err(vec!(err_undeclared_id(&a.id, "function")))
         }}
-        Value::TimerCall { name, cmd } => { match lookup_sig1(sigs, name, |s| match s {Signature::Timer{..} => true, _ => false}) {
+        Value::TimerCall { name, cmd } => { match lookup_sig1(sigs, &name.content, |s| match s {Signature::Timer{..} => true, _ => false}) {
             None => Err(vec!(err_undeclared_id(name, "timer"))),
             Some(Signature::Timer { name }) => match cmd {
                 TimerCmd::Read => Ok(Type::Num),
-                _ => Err(vec!(generic_err(name, &format!("timer call must be expression. Did you mean `timer.{}.read`?", name.fragment()))))
+                _ => Err(vec!(generic_err(name, &format!("timer call must be expression. Did you mean `timer.{}.read`?", name.content))))
             } 
             Some(_) => unreachable!()
         }}
@@ -739,7 +739,7 @@ fn ver_func_call(call: &mut FuncCall, args: &Vec<ArgDef>, rettype: Type, sigs: V
         }
     }
     return Err(vec!(generic_err(&call.id, format!("function {} called with incorrect arguments, expected {}, found {}",
-                                                 call.id,
+                                                 call.id.content,
                                                  args.iter().map(|a| a.argtype.bcis_rep()).collect::<Vec<String>>().join(", "),
                             call.args.iter().map(|arg| arg.exprtype.unwrap().bcis_rep()).collect::<Vec<String>>().join(", ")).as_str())));
 }
@@ -759,7 +759,7 @@ fn ver_un_ex(op: &UnOp, expr: &mut Expr, sigs: Vec<&Signatures>) -> Result<Type,
     let exptype = expr.exprtype.unwrap(); // previous line should have given expr a type, or early returned,
                                           // there is no situation in which the exprtype would be None here
     //Possible signatures (In Type, Out Type) of the operator
-    let op_sigs = UNARY_OPERATORS.get(op.fragment()).unwrap(); //Operator character will be valid
+    let op_sigs = UNARY_OPERATORS.get(op.content.as_str()).unwrap(); //Operator character will be valid
                                                                //because it was previously parsed.
     op_sigs.iter().find(|possible_signature| possible_signature.0 == exptype)
         .map(|sig| sig.1) // extract operator's return type on given value
@@ -772,7 +772,7 @@ fn ver_bin_ex(l: &mut Expr, op: &BinOp, r: &mut Expr, sigs: Vec<&Signatures>) ->
     let ltype = l.exprtype.unwrap();
     let rtype = r.exprtype.unwrap();
 
-    let op_sigs = BINARY_OPERATORS.get(op.fragment()).unwrap();
+    let op_sigs = BINARY_OPERATORS.get(op.content.as_str()).unwrap();
 
     let left_matches  = op_sigs.iter().filter(|s| s.0 == ltype);
 
@@ -837,7 +837,7 @@ fn lookup_sig_local_any<'a>(v: Vec<&Signatures>, s: &str) -> Option<&'a Signatur
     lookup_sig(v.get(0).unwrap(), s)
 }
 
-fn collapse<E>(o: Result<E, E>) -> E {
+pub fn collapse<E>(o: Result<E, E>) -> E {
     match o {
         Ok(e) => e,
         Err(e) => e

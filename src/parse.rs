@@ -7,18 +7,18 @@ use nom::{
     branch::alt,
     sequence::delimited,
     sequence::tuple,
-    character::complete::{multispace0, one_of},
+    character::complete::multispace0,
     character::{complete::char, streaming::none_of},
     character::complete::{alpha1, digit0},
     character::complete::alphanumeric0,
     bytes::complete::{tag, escaped},
     combinator::opt,
-    combinator::eof, number::complete::float, Offset
+    combinator::eof,
 };
-use nom_locate::LocatedSpan;
+use nom_locate::{LocatedSpan, position};
 use crate::ast::*;
 
-type Span<'a> = LocatedSpan<&'a str, String>;
+pub type Span<'a> = LocatedSpan<&'a str, String>;
 
 pub fn program(inp: Span) -> Result<Program, Box<dyn std::error::Error>> {
     Ok(tuple((multispace0, many0(def), eof))(inp)?.1.1)
@@ -56,7 +56,7 @@ fn proc(inp: Span) -> IResult<Span, Def> {
 
 fn func(inp: Span) -> IResult<Span, Def> {
     let (rest, val) = tuple((tag("func "), id, arg_defs, data_type, expr))(inp)?;
-    Ok((rest, Def::Func{name: val.1, args: val.2, rettype: val.3, expr: val.4 }))
+    Ok((rest, Def::Func{name: val.1, args: val.2, rettype: val.3, expr: val.4, init_priority: None }))
 }
 
 fn event(inp: Span) -> IResult<Span, Def> {
@@ -91,7 +91,8 @@ fn var(inp: Span) -> IResult<Span, Def> {
             match val.3{
                 Some((a, b)) => Some(b),
                 None => None
-            }
+            }, 
+        init_priority: None
     }))
 }
 
@@ -178,22 +179,22 @@ fn timer_cmd_read(inp: Span) -> IResult<Span, TimerCmd> {
 
 fn call(inp: Span) -> IResult<Span, Stm>{
     let (out, val) = tuple((id, arg_list, semi))(inp)?;
-    Ok((out, Stm::Call{id: val.0, args: val.1}))
+    Ok((out, Stm::Call{id: tokenize(&val.0), args: val.1, is_builtin: None}))
 }
 
 fn assign(inp: Span) -> IResult<Span, Stm>{
     let (out, val) = tuple((id, lex(char('=')), expr, semi))(inp)?;
-    Ok((out, Stm::Assign{id: val.0, val: val.2}))
+    Ok((out, Stm::Assign{id: tokenize(&val.0), val: val.2}))
 }
 
 fn loop_repeat(inp: Span) -> IResult<Span, Stm> {
     let (out, val) = tuple((tag("repeat"), expr, block_sequence))(inp)?;
-    Ok((out, Stm::Repeat{kw: val.0, val: val.1, seq: val.2}))
+    Ok((out, Stm::Repeat{kw: tokenize(&val.0), val: val.1, seq: val.2}))
 }
 
 fn loop_while(inp: Span) -> IResult<Span, Stm> {
     let (out, val) = tuple((tag("while"), expr, block_sequence))(inp)?;
-    Ok((out, Stm::While{kw: val.0, cond: val.1, seq: val.2}))
+    Ok((out, Stm::While{kw: tokenize(&val.0), cond: val.1, seq: val.2}))
 }
 
 fn local_var(inp: Span) -> IResult<Span, Stm> {
@@ -304,7 +305,7 @@ fn un_ex(inp: Span) -> IResult<Span, Expr> {
 
 fn func_call(inp: Span) -> IResult<Span, Expr> {
     let (out, val) = tuple((id, arg_list))(inp)?;
-    Ok((out, Expr{expr: UExpr::Value(Value::FuncCall(FuncCall{id: val.0, args: val.1})), exprtype: None}))
+    Ok((out, Expr{expr: UExpr::Value(Value::FuncCall(FuncCall{id: val.0, args: val.1, is_builtin: None})), exprtype: None}))
 }
 
 fn var_call(inp: Span) -> IResult<Span, Expr> {
@@ -337,33 +338,26 @@ fn literal(inp: Span) -> IResult<Span, Literal> {
         int_lit,
         str_lit
             ))(inp)
-        
     }
 
 fn bool_lit(inp: Span) -> IResult<Span, Literal> {
     let (out, val) = alt((lex(tag("true")), lex(tag("false"))))(inp)?;
-    Ok((out, Literal::BoolLiteral(val)))
+    Ok((out, Literal::BoolLiteral(tokenize(&val))))
 }
 
 fn int_lit(inp: Span) -> IResult<Span, Literal> {
    let (out, val) = digit0(inp)?;
-   Ok((out, Literal::BoolLiteral(val)))
+   Ok((out, Literal::BoolLiteral(tokenize(&val))))
 }
 
-fn num_lit(inp: Span) -> IResult<Span, Literal> {
+fn num_lit<'a>(inp: Span<'a>) -> IResult<Span, Literal> {
     let (out, val) = tuple((opt(digit0), char('.'), digit0))(inp)?;
-    let full = String::new();
-    full.push_str(val.0.map(|v| v.fragment()).unwrap_or(&""));
-    full.push(val.1);
-    full.push_str(val.2.fragment());
-    unsafe { //Don't know of any way to concatenate LocatedSpan s without unsafe block
-        Ok((out, Literal::NumLiteral(Span::new_from_raw_offset(val.2.location_offset(), val.2.location_line(), &full, val.2.extra))))
-    }
+        Ok((out, Literal::NumLiteral(Token{content: format!("{}.{}", if let Some(i) = val.0 {i.fragment()} else {""}, val.2), position: position(val.1), file: val.0.extra}))) 
 }
 
 fn str_lit(inp: Span) -> IResult<Span, Literal> {
     let (out, val) = delimited(char('"'), escaped(none_of("\\"), '\\', char('"')), char('"'))(inp)?;
-    Ok((out, Literal::StringLiteral(val)))
+    Ok((out, Literal::StringLiteral(Token{content: format!("\"{}\"", val.1), position: position(val.1)?, file: val.1.extra })))
 }
 
 fn id (inp: Span) -> IResult<Span, Id> {
@@ -373,11 +367,9 @@ fn id (inp: Span) -> IResult<Span, Id> {
 fn id2 (inp: Span) -> IResult<Span, Id> {
     let (inp, start) = alpha1(inp)?;
     let (inp, end) = alphanumeric0(inp)?;
-    let full: String = String::from(*start.fragment());
+    let mut full: String = String::from(*start.fragment());
     full.push_str(end.fragment());
-    unsafe { // This is the only way I could figure out to concatenate the contents of two LocatedSpans
-        return Ok((inp, Span::new_from_raw_offset(start.location_offset(), start.location_line(), &full, start.extra)));
-    }
+    Ok((inp, Token{ content: full, position: position(start), file: start.extra }))
 }
 
 fn semi (inp: Span) -> IResult<Span, char> {
@@ -395,3 +387,7 @@ fn lex<'a, F: 'a, O, E: ParseError<Span<'a>>>(inner: F) -> impl FnMut(Span<'a>) 
         delimited(multispace0, inner, multispace0)
     }
 
+
+fn tokenize<'a>(span: &Span) -> Token<'a> {
+    Token{content: String::from(span.fragment()), position: position(span), file: span.extra}
+}

@@ -1,11 +1,15 @@
 extern crate nom_locate;
 
-use nom_locate::LocatedSpan;
+
 
 pub type Program<'a> = Vec<Def<'a>>;
 
-pub type Span<'a> = LocatedSpan<&'a str, String>;
 
+pub struct Token<'a> {
+    pub content: String,
+    pub position: crate::parse::Span<'a>,
+    pub file: String,
+}
 
 pub enum Def<'a> {
     Actor{name: Id<'a>, members: Vec<Def<'a>>},
@@ -31,15 +35,15 @@ pub enum Stm<'a> {
     Assign{id: Id<'a>, val: Expr<'a>},
     Var{name: Id<'a>, vartype: Option<Type>, value: Option<Expr<'a>>},
     Timer{name: Id<'a>, cmd: TimerCmd},
-    Repeat{kw: Span<'a>, val: Expr<'a>, seq: Seq<'a>},
-    While{kw: Span<'a>, cond: Expr<'a>, seq: Seq<'a>},
-    If{kw: Span<'a>, cond: Expr<'a>, seq: Seq<'a>},
-    IfElse{kw: Span<'a>, cond: Expr<'a>, seq: Seq<'a>, elifs: Vec<ElseIf<'a>>, elseq: Seq<'a>},
-    Timed{kw: Span<'a>, time: Expr<'a>, seq: Seq<'a>},
+    Repeat{kw: Token<'a>, val: Expr<'a>, seq: Seq<'a>},
+    While{kw: Token<'a>, cond: Expr<'a>, seq: Seq<'a>},
+    If{kw: Token<'a>, cond: Expr<'a>, seq: Seq<'a>},
+    IfElse{kw: Token<'a>, cond: Expr<'a>, seq: Seq<'a>, elifs: Vec<ElseIf<'a>>, elseq: Seq<'a>},
+    Timed{kw: Token<'a>, time: Expr<'a>, seq: Seq<'a>},
     CallEvent{tp: Option<EvType>, name: Id<'a>}
 }
 
-pub struct ElseIf<'a>{pub kw: Span<'a>, pub cond: Expr<'a>, pub seq: Seq<'a>}
+pub struct ElseIf<'a>{pub kw: Token<'a>, pub cond: Expr<'a>, pub seq: Seq<'a>}
 
 #[derive(Clone)]
 pub enum StateType { Bool, U8, I8, U32, I32 }
@@ -108,18 +112,15 @@ pub enum Value<'a> {
 }
 
 pub enum Literal<'a>{
-    IntLiteral(Span<'a>),
-    NumLiteral(Span<'a>),
-    BoolLiteral(Span<'a>),
-    StringLiteral(Span<'a>)
+    IntLiteral(Token<'a>),
+    NumLiteral(Token<'a>),
+    BoolLiteral(Token<'a>),
+    StringLiteral(Token<'a>)
 }
 impl Literal<'_> {
-    pub fn str(&self) -> &str {
+    pub fn str(&self) -> &'_ String {
         match self {
-            Self::IntLiteral(i) => i.fragment(),
-            Self::NumLiteral(i) => i.fragment(),
-            Self::BoolLiteral(i) => i.fragment(),
-            Self::StringLiteral(i) => i.fragment(),
+            Self::IntLiteral(i) | Self::NumLiteral(i) | Self::BoolLiteral(i) | Self::StringLiteral(i) => &i.content
         }
     }
 }
@@ -134,12 +135,7 @@ pub struct FuncCall<'a> {
 }
 
 
-pub type BinOp<'a> = Span<'a>;
-pub type UnOp<'a> = Span<'a>;
+pub type BinOp<'a> = Token<'a>;
+pub type UnOp<'a> = Token<'a>;
 
-/**
- * Types below this point are essentially token types
- * Each has associated location data
- */
-//An identifier
-pub type Id<'a> = Span<'a>;
+pub type Id<'a> = Token<'a>;

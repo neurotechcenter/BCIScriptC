@@ -12,7 +12,7 @@ fn main() -> Result<(),Box<dyn std::error::Error>> {
     let program: ast::Program = Vec::new();
     for file in files {
         let filetext = String::from_utf8_lossy(&std::fs::read(file)?);
-        let filespan = ast::Span::new_extra(&filetext, file);
+        let filespan = parse::Span::new_extra(&filetext, file);
         program.append(&mut parse::program(filespan)?);
     }
     verify::verify(&mut program).map_err(|e| simple_error::simple_error!(e.join("\n")));

@@ -41,24 +41,24 @@ fn gen_def<'a>(def: Def<'a>) -> String { //The unwrapped values here should neve
 }
 
 fn gen_var(name: Id, value: Option<Expr>, init_priority: u64) -> String {
-    format!(".addVariable(\"{}\"{})", name.fragment(),
+    format!(".addVariable(\"{}\"{})", name.content,
         match value {
-            Some(e) => format!(", [&] (SequenceEnvironment &callingSequence){{{}}}, {}", gen_expr(e), init_priority),
+            Some(e) => format!(", [&] (SequenceEnvironment &callingSequence){{{}}}, {}", gen_expr(&e), init_priority),
             None => String::new()
         }
     )
 }
 
 fn gen_proc( name: Id,  args: Vec<ArgDef>, seq: Seq) -> String {
-    format!(".addProcedure(\"{}\",\nProtoSequence({{std::vector<std::string>{{ {} }} }})\n{})",
-        name.fragment(),
-        args.iter().map(|a| a.name.fragment().to_string()).collect::<Vec<String>>().join(", "),
+    format!(".addProcedure(\"{}\",\nProtoSequence({{std::vector<BCIEValue>{{ {} }} }})\n{})",
+        &name.content,
+        args.iter().map(|a| a.name.content).collect::<Vec<String>>().join(", "),
         gen_seq(seq)
     )
 }
 
 fn gen_func(name: Id, args: Vec<ArgDef>, rettype: Type, expr: Expr) -> String {
-    format!(".addFunction(\"{}\",{},[&] (std::vector<BCIEValue> args, SequenceEnvironment &callingSequence) {{{}}})", name.fragment(), args.len(), gen_expr1(expr, &Some(args)))
+    format!(".addFunction(\"{}\",{},[&] (std::vector<BCIEValue> args, SequenceEnvironment &callingSequence) {{{}}})", &name.content, args.len(), gen_expr1(&expr, &Some(args)))
 }
 
 fn gen_actor(name: Id, members: Vec<Def>) -> String {
@@ -70,11 +70,11 @@ fn gen_actor(name: Id, members: Vec<Def>) -> String {
 }
 
 fn gen_event( name: Id ) -> String {
-    format!("addEvent(\"{}\");", name.fragment())
+    format!("addEvent(\"{}\");", &name.content)
 }
 
 fn gen_state(name: Id, statetype: StateType) -> String {
-    format!("addState(\"{}\", BCIState::StateType.{});", name.fragment(), 
+    format!("addState(\"{}\", BCIState::StateType.{});", name.content, 
             match statetype {
                 StateType::U8 => "u8",
                 StateType::I8 => "i8",
@@ -86,11 +86,11 @@ fn gen_state(name: Id, statetype: StateType) -> String {
 }
 
 fn gen_stateevent( name: Id ) -> String {
-    format!(".addStateEvent(\"{}\")", name.fragment())
+    format!(".addStateEvent(\"{}\")", name.content)
 }
 
 fn gen_timer( name: Id ) -> String {
-    format!(".addTimer(\"{}\")", name.fragment())
+    format!(".addTimer(\"{}\")", name.content)
 }
 
 fn gen_actor_def(def: Def) -> String {
@@ -122,16 +122,32 @@ fn gen_stmt(stm: Stm) -> String {
         Stm::Assign { id, val } => gen_assign(id, val),
         Stm::Repeat { kw, val, seq } => gen_repeat(val, seq),
         Stm::IfElse { kw, cond, seq, elifs, elseq } => gen_if_else(cond, seq, elifs, elseq),
-        Stm::Timer { name, cmd } => gen_timer(name),
+        Stm::Timer { name, cmd } => gen_stm_timer(name, cmd),
         Stm::CallEvent { tp, name } => gen_callevent( tp.unwrap(), name )
     }
 
 }
 
+fn gen_stm_timer(name: Id, cmd: TimerCmd) -> String {
+    if let TimerCmd::Add = cmd {
+        format!(".addNormalBlock[&] (Sequence& callingSequence) {{callingSequence.addTimer({})}}", name.content)
+    } else {
+    format!(".addNormalBlock([&] (Sequence& callingSequence) {{callingSequence.getTimer(\"{}\").{}();}})", name.content,
+        match cmd {
+            TimerCmd::Start => "start",
+            TimerCmd::Stop => "stop",
+            TimerCmd::Reset => "reset",
+            TimerCmd::Read => panic!("gen_stm_timer given invalid command"),
+            TimerCmd::Add => unreachable!()
+        }
+    )
+    }
+}
+
 fn gen_callevent(tp: EvType, name: Id) -> String{
     match tp {
-        EvType::BCISEvent => format!(".addNormalBlock([&] (Sequence& callingSequence) {{callingSequence.callEvent(\"{}\")}}", name.fragment()),
-        EvType::StateEvent => format!(".addNormalBlock([&] (Sequence& callingSequence) {{callingSequence.callStateEvent(\"{}\")}}", name.fragment()),
+        EvType::BCISEvent => format!(".addNormalBlock([&] (Sequence& callingSequence) {{callingSequence.callEvent(\"{}\")}}", name.content),
+        EvType::StateEvent => format!(".addNormalBlock([&] (Sequence& callingSequence) {{callingSequence.callStateEvent(\"{}\")}}", name.content),
     }
 }
 
@@ -139,7 +155,7 @@ fn gen_if(cond: Expr, seq: Seq) -> String{
     match cond.exprtype {
         Some(Type::Bool) => 
             format!(".addIf({})\n{}.closeStatement()\n",
-            gen_expr_lambda(gen_expr(cond)),
+            gen_expr_lambda(gen_expr(&cond)),
             gen_seq(seq)
             ),
         Some(_) => panic!("gen_if given expr of type other than boolean"),
@@ -148,25 +164,25 @@ fn gen_if(cond: Expr, seq: Seq) -> String{
 }
 
 fn gen_stm_var(name: Id,  value: Option<Expr>) -> String {
-    format!(".addNormalBlock({})", gen_block_lambda(format!("callingSequence.addVariable({}{})", name.fragment(), 
+    format!(".addNormalBlock({})", gen_block_lambda(format!("callingSequence.addVariable({}{})", name.content, 
                         match value {
-                            Some(e) => format!(",{}", gen_expr(e)),
+                            Some(e) => format!(",{}", gen_expr(&e)),
                             None => String::new()
                         })))
 }
 
 
 fn gen_assign(name: Id, val: Expr) -> String{
-    format!(".addNormalBlock([&] (Sequence& callingSequence) {{callingSequence.setVariable({},{})}}\n", name.fragment(), gen_expr(val))
+    format!(".addNormalBlock([&] (Sequence& callingSequence) {{callingSequence.setVariable({},{})}}\n", name.content, gen_expr(&val))
 }
 
 
 fn gen_call(id: Id, args: Vec<Expr>, is_builtin: bool) -> String {
     if is_builtin {
-        builtin_sub(BUILTIN_SUBS.get(id.fragment()).unwrap(), args)
+        builtin_sub(BUILTIN_SUBS.get(id.content.as_str()).unwrap(), args)
     } else {
         format!(".addNormalBlock({})", gen_block_lambda(format!("callingSequence.callProc(std::vector<std::string> {{{}}})",
-            args.into_iter().map(|a| format!("BCIEValue({})", gen_expr(a))).collect::<Vec<String>>().join(", ")
+            args.into_iter().map(|a| format!("BCIEValue({})", gen_expr(&a))).collect::<Vec<String>>().join(", ")
         )))
     }
 }
@@ -175,7 +191,7 @@ fn gen_while(cond: Expr, seq: Seq) -> String{
     match cond.exprtype {
         Some(Type::Bool) => 
             format!(".addWhile({})\n{}.closeStatement()\n",
-            gen_expr_lambda(gen_expr(cond)), gen_seq(seq)),
+            gen_expr_lambda(gen_expr(&cond)), gen_seq(seq)),
         Some(_) => panic!("gen_while given expr of type other than boolean"),
         None => panic!("gen_while given expr without type")
     }
@@ -185,7 +201,7 @@ fn gen_timed(time: Expr, seq: Seq) -> String {
     match time.exprtype {
         Some(Type::Int) => 
             format!(".addTimed({}){}.closeStatement()\n",
-            gen_expr_lambda(gen_expr(time)),
+            gen_expr_lambda(gen_expr(&time)),
             gen_seq(seq)),
         Some(_) => panic!("gen_timed given expr of type other than int"),
         _ => panic!("gen_timed given expr without type")
@@ -195,7 +211,7 @@ fn gen_timed(time: Expr, seq: Seq) -> String {
 fn gen_repeat(val: Expr, seq: Seq) -> String {
     match val.exprtype {
         Some(Type::Int) => 
-            format!(".addLoop({})\n{}.closeStatement()\n", gen_expr_lambda(gen_expr(val)), gen_seq(seq)),
+            format!(".addLoop({})\n{}.closeStatement()\n", gen_expr_lambda(gen_expr(&val)), gen_seq(seq)),
         Some(_) => panic!("gen_repeat given expr of type other than int"),
         _ => panic!("gen_repeat given expr without type")
     }
@@ -206,7 +222,7 @@ fn gen_if_else(cond: Expr, seq: Seq, elifs: Vec<ElseIf>, elseq: Seq ) -> String 
     match cond.exprtype {
         Some(Type::Bool) => 
             format!(".addIfElse({})\n{}\n.closeStatement()\n{}{}{}.closeStatement()\n",
-                gen_expr_lambda(gen_expr(cond)),
+                gen_expr_lambda(gen_expr(&cond)),
                 gen_seq(seq),
                 elifs.into_iter().map(gen_elif).collect::<Vec<String>>().join(""),
                 gen_seq(elseq),
@@ -228,7 +244,7 @@ fn gen_elif(elif: ElseIf) -> String{
     match elif.cond.exprtype {
         Some(Type::Bool) => 
             format!(".addIfElse({})\n{}.closeStatement()",
-            gen_expr_lambda(gen_expr(elif.cond)),
+            gen_expr_lambda(gen_expr(&elif.cond)),
             gen_seq(elif.seq)),
         Some(_) => panic!("gen_elif given expr of type other than bool"),
         _ => panic!("gen_elif given expression without type")
@@ -237,18 +253,18 @@ fn gen_elif(elif: ElseIf) -> String{
 
 
 fn builtin_sub(substr: &String, args: Vec<Expr>) -> String {
-    let x:usize  = 0;
+    let mut x: usize  = 0;
     let ch: Vec<char> = substr.chars().collect();
-    let outstr = String::new();
+    let mut outstr = String::new();
     while x < substr.len() {
         if ch[x] == '$' {
             x += 1;
-            let num_str = String::new();
+            let mut num_str = String::new();
             while x < substr.len() && is_digit(ch[x]) {
                 num_str.push(ch[x]);
                 x += 1;
             }
-            outstr.push_str(&gen_expr(args[num_str.parse::<usize>().unwrap()]));
+            outstr.push_str(&gen_expr(args.get(num_str.parse::<usize>().unwrap()).unwrap()));
         }
         if x < substr.len() {
             outstr.push(ch[x]);
@@ -262,7 +278,7 @@ fn is_digit(c: char) -> bool {
 }
 
 
-fn gen_expr(expr: Expr) -> String {
+fn gen_expr(expr: &Expr) -> String {
     gen_expr1(expr, &None)
 }
 
@@ -270,20 +286,20 @@ fn gen_expr(expr: Expr) -> String {
  * funcargs are exclusively for when this expr is part of a function definition, because
  * function arguments are accessed differently than normal
  */
-fn gen_expr1(expr: Expr, funcargs: &Option<Vec<ArgDef>>) -> String {
+fn gen_expr1(expr: &Expr, funcargs: &Option<Vec<ArgDef>>) -> String {
     match expr.expr {
-        UExpr::BinExpr { l, op, r } => format!("({}{}{})", gen_expr1(*l, funcargs), gen_bop(op), gen_expr1(*r, funcargs)),
-        UExpr::UnExpr { op, expr } => format!("({}{})", gen_uop(op), gen_expr1(*expr, funcargs)),
+        UExpr::BinExpr { l, op, r } => format!("({}{}{})", gen_expr1(l.as_ref(), funcargs), gen_bop(op), gen_expr1(r.as_ref(), funcargs)),
+        UExpr::UnExpr { op, expr } => format!("({}{})", gen_uop(op), gen_expr1(expr.as_ref(), funcargs)),
         UExpr::Value(val) => gen_val(val, expr.exprtype.unwrap(), funcargs)
     }
 }
 
 fn gen_bop(op: BinOp) -> String {
-    BINARY_OP_SUB.get(op.fragment()).unwrap().to_string()
+    BINARY_OP_SUB.get(op.content.as_str()).unwrap().to_string()
 }
 
 fn gen_uop(op: UnOp) -> String {
-    UNARY_OP_SUB.get(op.fragment()).unwrap().to_string()
+    UNARY_OP_SUB.get(op.content.as_str()).unwrap().to_string()
 }
 
 fn gen_val(val: Value, t: Type, funcargs: &Option<Vec<ArgDef>>) -> String {
@@ -291,36 +307,31 @@ fn gen_val(val: Value, t: Type, funcargs: &Option<Vec<ArgDef>>) -> String {
         Value::Literal(l) => gen_lit(l),
         Value::VarCall(v) => gen_var_call(v, t, funcargs),
         Value::FuncCall(FuncCall { id, args, is_builtin }) => gen_func_call(id, args, is_builtin.unwrap()),
-        Value::TimerCall { name, cmd } => format!("callingSequence.getTimer(\"{}\").read()", name.fragment())
+        Value::TimerCall { name, cmd } => format!("callingSequence.getTimer(\"{}\").read()", name.content)
     }
 }
 
 fn gen_func_call(id: Id, args: Vec<Expr>, is_builtin: bool) -> String {
     if is_builtin {
-        builtin_sub(BUILTIN_SUBS.get(id.fragment()).unwrap(), args)
+        builtin_sub(BUILTIN_SUBS.get(id.content.as_str()).unwrap(), args)
     } else {
         format!("callingSequence.callFunction(std::vector<BCIEValue>{})",
-        args.into_iter().map(|a| format!("BCIEValue({})", gen_expr(a))).collect::<Vec<String>>().join(", "))
+        args.into_iter().map(|a| format!("BCIEValue({})", gen_expr(&a))).collect::<Vec<String>>().join(", "))
     }
 }
 
 fn gen_var_call(v: Id, t: Type, funcargs: &Option<Vec<ArgDef>>) -> String {
     match funcargs {
-        Some(f) => match f.iter().position(|f| f.name.fragment() == v.fragment()) {
+        Some(f) => match f.iter().position(|f| f.name.content == v.content) {
             Some(v) => format!("args.at({})", v),
-            None => format!("callingSequence.getVariable(\"{}\")", v.fragment())
+            None => format!("callingSequence.getVariable(\"{}\")", v.content)
         }
-        None => format!("callingSequence.getVariable(\"{}\")", v.fragment())
+        None => format!("callingSequence.getVariable(\"{}\")", v.content)
     }
 }
 
 fn gen_lit(l: Literal) -> String {
-    match l {
-        Literal::IntLiteral(i) => i.fragment(),
-        Literal::NumLiteral(n) => n.fragment(),
-        Literal::BoolLiteral(b) => b.fragment(),
-        Literal::StringLiteral(s) => format!("\"{}\"", s.fragment()).as_str(),
-    }.to_string()
+    l.str().to_string()
 }
 
 fn gen_block_lambda<T: std::fmt::Display>(c: T) -> String {
@@ -333,7 +344,7 @@ fn gen_expr_lambda<T: std::fmt::Display>(c: T) -> String {
 
 
 fn indent(inp: String) -> String {
-    let s = String::new();
+    let mut s = String::new();
     s += "\t";
     s += &inp; 
     return inp;
@@ -341,8 +352,8 @@ fn indent(inp: String) -> String {
 }
 
 fn indent1(i: i64, inp: String) -> String {
-    let s = String::new();
-    for x in 0..i {
+    let mut s = String::new();
+    for _x in 0..i {
         s += "\t";
     }
     s += &inp;
