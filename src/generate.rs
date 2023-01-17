@@ -26,11 +26,11 @@ pub fn generate_program<'a>(program: Program<'a>) -> String {
 }
 
 fn gen_def<'a>(def: Def<'a>) -> String { //The unwrapped values here should never be None, so a
-                                          //panic here can only arise from a bug in the code.
+                                          //panic here can only arise from a bug in BCIScriptC's code.
     match def {
-        Def::Var { name, vartype, value, init_priority } => gen_var(name, value, init_priority.unwrap()),
+        Def::Var { name, vartype, value, init_priority } => gen_var(name, value, init_priority.borrow().unwrap()),
         Def::Proc { name, args, seq } => gen_proc(name, args, seq),
-        Def::Func { name, args, rettype, expr, .. } => gen_func(name, args, rettype, expr),
+        Def::Func { name, args, rettype, expr, .. } => gen_func(name, args, expr),
         Def::Actor { name, members } => gen_actor(name, members),
         Def::Event { name } => gen_event(name),
         Def::State { name, statetype } => gen_state(name, statetype),
@@ -52,13 +52,13 @@ fn gen_var(name: Id, value: Option<Expr>, init_priority: u64) -> String {
 fn gen_proc( name: Id,  args: Vec<ArgDef>, seq: Seq) -> String {
     format!(".addProcedure(\"{}\",\nProtoSequence({{std::vector<BCIEValue>{{ {} }} }})\n{})",
         &name.content,
-        args.iter().map(|a| a.name.content).collect::<Vec<String>>().join(", "),
+        args.iter().map(|a| a.name.content.as_str()).collect::<Vec<&str>>().join(", "),
         gen_seq(seq)
     )
 }
 
-fn gen_func(name: Id, args: Vec<ArgDef>, rettype: Type, expr: Expr) -> String {
-    format!(".addFunction(\"{}\",{},[&] (std::vector<BCIEValue> args, SequenceEnvironment &callingSequence) {{{}}})", &name.content, args.len(), gen_expr1(&expr, &Some(args)))
+fn gen_func(name: Id, args: Vec<ArgDef>, expr: Expr) -> String {
+    format!(".addFunction(\"{}\",{},[&] (std::vector<BCIEValue> args, SequenceEnvironment &callingSequence) {{return {};}})", &name.content, args.len(), gen_expr1(&expr, &Some(args)))
 }
 
 fn gen_actor(name: Id, members: Vec<Def>) -> String {
@@ -95,9 +95,9 @@ fn gen_timer( name: Id ) -> String {
 
 fn gen_actor_def(def: Def) -> String {
     match def {
-        Def::Var { name, vartype, value, init_priority } => indent1(2, gen_var(name, value, init_priority.unwrap())),
+        Def::Var { name, vartype, value, init_priority } => indent1(2, gen_var(name, value, init_priority.borrow().unwrap())),
         Def::Proc { name, args, seq } => gen_proc(name, args, seq),
-        Def::Func { name, args, rettype, expr, .. } => gen_func(name, args, rettype, expr),
+        Def::Func { name, args, rettype, expr, .. } => gen_func(name, args,  expr),
         Def::Sounds { files } => files.iter().map(|f| indent1(2, format!(".addSound(std::vector<std::string>> {})", f.str()))).fold(String::new(), |l, r| format!("{}\n{}", l, r)),
         Def::Graphics { files } => files.iter().map(|f| indent1(2, format!(".addGraphic({})", f.str()))).fold(String::new(), |l, r| format!("{}\n{}", l, r)),
         Def::OnEvent { name, seq } => indent1(2, format!(".addEventListener(new EventListener(ProtoSequence(){}))", gen_seq(seq))),
@@ -109,14 +109,14 @@ fn gen_actor_def(def: Def) -> String {
 
 
 fn gen_seq(seq: Seq) -> String {
-    seq.iter().map(|s| *s).map(gen_stmt).collect::<Vec<String>>().join("")
+    seq.into_iter().map(|s| s).map(gen_stmt).collect::<Vec<String>>().join("")
 }
 
 fn gen_stmt(stm: Stm) -> String {
     match stm {
         Stm::If { kw, cond, seq } => gen_if(cond, seq),
         Stm::Var { name, vartype, value } => gen_stm_var(name, value),
-        Stm::Call { id, args, is_builtin } => gen_call(id, args, is_builtin.unwrap()),
+        Stm::Call { id, args, is_builtin } => gen_call(id, args, is_builtin.borrow().unwrap()),
         Stm::While { kw, cond, seq } => gen_while(cond, seq),
         Stm::Timed { kw, time, seq } => gen_timed(time, seq),
         Stm::Assign { id, val } => gen_assign(id, val),
@@ -152,7 +152,7 @@ fn gen_callevent(tp: EvType, name: Id) -> String{
 }
 
 fn gen_if(cond: Expr, seq: Seq) -> String{
-    match cond.exprtype {
+    match *cond.exprtype.borrow() {
         Some(Type::Bool) => 
             format!(".addIf({})\n{}.closeStatement()\n",
             gen_expr_lambda(gen_expr(&cond)),
@@ -188,7 +188,7 @@ fn gen_call(id: Id, args: Vec<Expr>, is_builtin: bool) -> String {
 }
 
 fn gen_while(cond: Expr, seq: Seq) -> String{
-    match cond.exprtype {
+    match cond.exprtype.borrow().clone() {
         Some(Type::Bool) => 
             format!(".addWhile({})\n{}.closeStatement()\n",
             gen_expr_lambda(gen_expr(&cond)), gen_seq(seq)),
@@ -198,7 +198,7 @@ fn gen_while(cond: Expr, seq: Seq) -> String{
 }
 
 fn gen_timed(time: Expr, seq: Seq) -> String {
-    match time.exprtype {
+    match time.exprtype.borrow().clone() {
         Some(Type::Int) => 
             format!(".addTimed({}){}.closeStatement()\n",
             gen_expr_lambda(gen_expr(&time)),
@@ -209,7 +209,7 @@ fn gen_timed(time: Expr, seq: Seq) -> String {
 }
 
 fn gen_repeat(val: Expr, seq: Seq) -> String {
-    match val.exprtype {
+    match val.exprtype.borrow().clone() {
         Some(Type::Int) => 
             format!(".addLoop({})\n{}.closeStatement()\n", gen_expr_lambda(gen_expr(&val)), gen_seq(seq)),
         Some(_) => panic!("gen_repeat given expr of type other than int"),
@@ -219,7 +219,8 @@ fn gen_repeat(val: Expr, seq: Seq) -> String {
 
 //See bciscript_elifs for details on how else if statements work
 fn gen_if_else(cond: Expr, seq: Seq, elifs: Vec<ElseIf>, elseq: Seq ) -> String {
-    match cond.exprtype {
+    let eliflen = elifs.len();
+    match cond.exprtype.borrow().clone() {
         Some(Type::Bool) => 
             format!(".addIfElse({})\n{}\n.closeStatement()\n{}{}{}.closeStatement()\n",
                 gen_expr_lambda(gen_expr(&cond)),
@@ -227,8 +228,8 @@ fn gen_if_else(cond: Expr, seq: Seq, elifs: Vec<ElseIf>, elseq: Seq ) -> String 
                 elifs.into_iter().map(gen_elif).collect::<Vec<String>>().join(""),
                 gen_seq(elseq),
                 {
-                    let outstr = String::new();
-                    for i in elifs {
+                    let mut outstr = String::new();
+                    for i in 1..eliflen {
                         outstr.push_str(".closeStatement()\n");
                     }
                     outstr
@@ -241,7 +242,7 @@ fn gen_if_else(cond: Expr, seq: Seq, elifs: Vec<ElseIf>, elseq: Seq ) -> String 
 }
 
 fn gen_elif(elif: ElseIf) -> String{
-    match elif.cond.exprtype {
+    match elif.cond.exprtype.borrow().clone() {
         Some(Type::Bool) => 
             format!(".addIfElse({})\n{}.closeStatement()",
             gen_expr_lambda(gen_expr(&elif.cond)),
@@ -290,7 +291,7 @@ fn gen_expr1(expr: &Expr, funcargs: &Option<Vec<ArgDef>>) -> String {
     match expr.expr {
         UExpr::BinExpr { l, op, r } => format!("({}{}{})", gen_expr1(l.as_ref(), funcargs), gen_bop(op), gen_expr1(r.as_ref(), funcargs)),
         UExpr::UnExpr { op, expr } => format!("({}{})", gen_uop(op), gen_expr1(expr.as_ref(), funcargs)),
-        UExpr::Value(val) => gen_val(val, expr.exprtype.unwrap(), funcargs)
+        UExpr::Value(val) => gen_val(val, expr.exprtype.borrow().unwrap(), funcargs)
     }
 }
 
@@ -306,7 +307,7 @@ fn gen_val(val: Value, t: Type, funcargs: &Option<Vec<ArgDef>>) -> String {
     match val {
         Value::Literal(l) => gen_lit(l),
         Value::VarCall(v) => gen_var_call(v, t, funcargs),
-        Value::FuncCall(FuncCall { id, args, is_builtin }) => gen_func_call(id, args, is_builtin.unwrap()),
+        Value::FuncCall(FuncCall { id, args, is_builtin }) => gen_func_call(id, args, is_builtin.borrow().unwrap()),
         Value::TimerCall { name, cmd } => format!("callingSequence.getTimer(\"{}\").read()", name.content)
     }
 }

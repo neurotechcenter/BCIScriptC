@@ -1,4 +1,6 @@
 extern crate nom;
+use std::cell::RefCell;
+
 use nom::{
     IResult,
     error::ParseError,
@@ -20,7 +22,7 @@ use crate::ast::*;
 
 pub type Span<'a> = LocatedSpan<&'a str, String>;
 
-pub fn program(inp: Span) -> Result<Program, Box<dyn std::error::Error>> {
+pub fn program<'a>(inp: Span<'a>) -> Result<Program<'a>, Box<dyn std::error::Error + 'a>> {
     Ok(tuple((multispace0, many0(def), eof))(inp)?.1.1)
 }
 
@@ -56,7 +58,7 @@ fn proc(inp: Span) -> IResult<Span, Def> {
 
 fn func(inp: Span) -> IResult<Span, Def> {
     let (rest, val) = tuple((tag("func "), id, arg_defs, data_type, expr))(inp)?;
-    Ok((rest, Def::Func{name: val.1, args: val.2, rettype: val.3, expr: val.4, init_priority: None }))
+    Ok((rest, Def::Func{name: val.1, args: val.2, rettype: val.3, expr: val.4, init_priority: RefCell::from(None) }))
 }
 
 fn event(inp: Span) -> IResult<Span, Def> {
@@ -92,7 +94,7 @@ fn var(inp: Span) -> IResult<Span, Def> {
                 Some((a, b)) => Some(b),
                 None => None
             }, 
-        init_priority: None
+        init_priority: RefCell::from(None)
     }))
 }
 
@@ -179,22 +181,24 @@ fn timer_cmd_read(inp: Span) -> IResult<Span, TimerCmd> {
 
 fn call(inp: Span) -> IResult<Span, Stm>{
     let (out, val) = tuple((id, arg_list, semi))(inp)?;
-    Ok((out, Stm::Call{id: tokenize(&val.0), args: val.1, is_builtin: None}))
+    Ok((out, Stm::Call{id: val.0, args: val.1, is_builtin: RefCell::from(None)}))
 }
 
 fn assign(inp: Span) -> IResult<Span, Stm>{
     let (out, val) = tuple((id, lex(char('=')), expr, semi))(inp)?;
-    Ok((out, Stm::Assign{id: tokenize(&val.0), val: val.2}))
+    Ok((out, Stm::Assign{id: val.0, val: val.2}))
 }
 
 fn loop_repeat(inp: Span) -> IResult<Span, Stm> {
-    let (out, val) = tuple((tag("repeat"), expr, block_sequence))(inp)?;
-    Ok((out, Stm::Repeat{kw: tokenize(&val.0), val: val.1, seq: val.2}))
+    let (out, token) = tokenize(tag("repeat"))(inp)?;
+    let (out, val) = tuple((expr, block_sequence))(out)?;
+    Ok((out, Stm::Repeat{kw: token, val: val.0, seq: val.1}))
 }
 
 fn loop_while(inp: Span) -> IResult<Span, Stm> {
-    let (out, val) = tuple((tag("while"), expr, block_sequence))(inp)?;
-    Ok((out, Stm::While{kw: tokenize(&val.0), cond: val.1, seq: val.2}))
+    let (out, token) = tokenize(tag("while"))(inp)?;
+    let (out, val) = tuple((expr, block_sequence))(out)?;
+    Ok((out, Stm::While{kw: token, cond: val.0, seq: val.1}))
 }
 
 fn local_var(inp: Span) -> IResult<Span, Stm> {
@@ -214,13 +218,15 @@ fn local_var(inp: Span) -> IResult<Span, Stm> {
 }
 
 fn cond_if(inp: Span) -> IResult<Span, Stm> {
-    let (out, val) = tuple((tag("if"), expr, block_sequence))(inp)?;
-    Ok((out, Stm::If{kw: val.0, cond: val.1, seq: val.2}))
+    let (out, pos) = position(inp)?;
+    let (out, val) = tuple((tag("if"), expr, block_sequence))(out)?;
+    Ok((out, Stm::If{kw: Token{content: String::from(*val.0.fragment()), position: pos, file: val.0.extra}, cond: val.1, seq: val.2}))
 }
 
 fn cond_ifelse(inp: Span) -> IResult<Span, Stm> {
-    let (out, val) = tuple((tag("if"), expr, block_sequence,  many0(else_if), opt(tuple((tag("else"), block_sequence)))))(inp)?;
-    Ok((out, Stm::IfElse{kw: val.0, cond: val.1, seq: val.2, elifs: val.3, elseq: 
+    let (out, pos) = position(inp)?;
+    let (out, val) = tuple((tag("if"), expr, block_sequence,  many0(else_if), opt(tuple((tag("else"), block_sequence)))))(out)?;
+    Ok((out, Stm::IfElse{kw: Token{content: String::from(*val.0.fragment()), position: pos, file: val.0.extra}, cond: val.1, seq: val.2, elifs: val.3, elseq: 
         match val.4 {
             Some((a, b)) => b,
             None => Vec::new()
@@ -229,13 +235,15 @@ fn cond_ifelse(inp: Span) -> IResult<Span, Stm> {
 }
 
 fn else_if(inp: Span) -> IResult<Span, ElseIf> {
-    let (out, val) = tuple((tag("else if"), expr, block_sequence))(inp)?;
-    Ok((out, ElseIf{kw: val.0, cond: val.1, seq: val.2}))
+    let (out, pos) = position(inp)?;
+    let (out, val) = tuple((tag("else if"), expr, block_sequence))(out)?;
+    Ok((out, ElseIf{kw: Token{content: String::from(*val.0.fragment()), position: pos, file: val.0.extra},  cond: val.1, seq: val.2}))
 }
 
 fn timed(inp: Span) -> IResult<Span, Stm> {
-    let (out, val) = tuple((tag("timed"), expr, block_sequence))(inp)?;
-    Ok((out, Stm::Timed{kw: val.0, time: val.1, seq: val.2}))
+    let (out, pos) = position(inp)?;
+    let (out, val) = tuple((tag("timed"), expr, block_sequence))(out)?;
+    Ok((out, Stm::Timed{kw: Token{content: String::from(*val.0.fragment()), position: pos, file: val.0.extra}, time: val.1, seq: val.2}))
 }
 
 
@@ -247,7 +255,7 @@ fn arg_def (inp: Span) -> IResult<Span, ArgDef> {
     let (inp, name) = lex(id)(inp)?;
     let (inp, _) = lex(char(':'))(inp)?;
     let (inp, arg_type) = lex(data_type)(inp)?;
-    return Ok((inp, ArgDef{ name: name, argtype: arg_type }));
+    return Ok((inp, ArgDef{ name, argtype: arg_type }));
 }
 
 fn arg_list (inp: Span) -> IResult<Span, Vec<Expr>> {
@@ -292,7 +300,7 @@ fn bin_ex(inp: Span) -> IResult<Span, Expr> {
         tuple((expr, lex(bin_op), delimited(lex(char('(')), expr, char(')')))),
         tuple((expr, lex(bin_op), expr))
         ))(inp)?;
-    Ok((out, Expr{expr: UExpr::BinExpr{l: Box::new(binex.0), op: binex.1, r: Box::new(binex.2)}, exprtype: None}))
+    Ok((out, Expr{expr: UExpr::BinExpr{l: Box::new(binex.0), op: binex.1, r: Box::new(binex.2)}, exprtype: RefCell::from(None)}))
 }
 
 fn un_ex(inp: Span) -> IResult<Span, Expr> {
@@ -300,35 +308,35 @@ fn un_ex(inp: Span) -> IResult<Span, Expr> {
             tuple((lex(un_op), delimited(lex(char('(')), expr, lex(char(')'))))),
             tuple((lex(un_op), expr))
             ))(inp)?;
-    Ok((out, Expr{expr: UExpr::UnExpr{op: unex.0, expr: Box::new(unex.1)}, exprtype:None}))
+    Ok((out, Expr{expr: UExpr::UnExpr{op: unex.0, expr: Box::new(unex.1)}, exprtype:RefCell::from(None)}))
 }
 
 fn func_call(inp: Span) -> IResult<Span, Expr> {
     let (out, val) = tuple((id, arg_list))(inp)?;
-    Ok((out, Expr{expr: UExpr::Value(Value::FuncCall(FuncCall{id: val.0, args: val.1, is_builtin: None})), exprtype: None}))
+    Ok((out, Expr{expr: UExpr::Value(Value::FuncCall(FuncCall{id: val.0, args: val.1, is_builtin:RefCell::from(None)})), exprtype:RefCell::from(None)}))
 }
 
 fn var_call(inp: Span) -> IResult<Span, Expr> {
     let (out, val) = id(inp)?;
-    Ok((out, Expr{expr: UExpr::Value(Value::VarCall(val)), exprtype: None}))
+    Ok((out, Expr{expr: UExpr::Value(Value::VarCall(val)), exprtype:RefCell::from(None)}))
 }
 
 fn timer_call(inp: Span) -> IResult<Span, Expr> {
     let (out, val) = tuple((tag("timer."), timer_cmd, id))(inp)?;
-    Ok((out, Expr{ expr: UExpr::Value(Value::TimerCall { name: val.2, cmd: val.1 }), exprtype: Some(Type::Num)}))
+    Ok((out, Expr{ expr: UExpr::Value(Value::TimerCall { name: val.2, cmd: val.1 }), exprtype: RefCell::from(Some(Type::Num))}))
 }
 
 fn literal_expr(inp: Span) -> IResult<Span, Expr> {
     let (out, val) = literal(inp)?;
-    Ok((out, Expr{expr: UExpr::Value(Value::Literal(val)), exprtype: None}))
+    Ok((out, Expr{expr: UExpr::Value(Value::Literal(val)), exprtype:RefCell::from(None)}))
 }
 
 fn un_op(inp: Span) -> IResult<Span, UnOp> {
-    alt((tag("-"), tag("!")))(inp)
+    tokenize(alt((tag("-"), tag("!"))))(inp) 
 }
 
 fn bin_op(inp: Span) -> IResult<Span, UnOp> {
-    alt((tag("+"), tag("-"),tag("*"),tag("/"),tag("&"),tag("|"),tag("="),tag(">"),tag("<")))(inp)
+    tokenize(alt((tag("+"), tag("-"),tag("*"),tag("/"),tag("&"),tag("|"),tag("="),tag(">"),tag("<"))))(inp)
 }
 
 fn literal(inp: Span) -> IResult<Span, Literal> {
@@ -341,23 +349,25 @@ fn literal(inp: Span) -> IResult<Span, Literal> {
     }
 
 fn bool_lit(inp: Span) -> IResult<Span, Literal> {
-    let (out, val) = alt((lex(tag("true")), lex(tag("false"))))(inp)?;
-    Ok((out, Literal::BoolLiteral(tokenize(&val))))
+    let (out, token) = tokenize( alt(( lex(tag("true")), lex(tag("false")) )))(inp)?;
+    Ok((out, Literal::BoolLiteral(token)))
 }
 
 fn int_lit(inp: Span) -> IResult<Span, Literal> {
-   let (out, val) = digit0(inp)?;
-   Ok((out, Literal::BoolLiteral(tokenize(&val))))
+    let (out, token) = tokenize(digit0)(inp)?;
+   Ok((out, Literal::BoolLiteral(token)))
 }
 
 fn num_lit<'a>(inp: Span<'a>) -> IResult<Span, Literal> {
-    let (out, val) = tuple((opt(digit0), char('.'), digit0))(inp)?;
-        Ok((out, Literal::NumLiteral(Token{content: format!("{}.{}", if let Some(i) = val.0 {i.fragment()} else {""}, val.2), position: position(val.1), file: val.0.extra}))) 
+    let (out, pos) = position(inp)?;
+    let (out, val) = tuple((opt(digit0), char('.'), digit0))(out)?;
+        Ok((out, Literal::NumLiteral(Token{content: format!("{}.{}", if let Some(i) = val.0 {i.fragment()} else {""}, val.2), position: pos, file: val.2.extra}))) 
 }
 
 fn str_lit(inp: Span) -> IResult<Span, Literal> {
-    let (out, val) = delimited(char('"'), escaped(none_of("\\"), '\\', char('"')), char('"'))(inp)?;
-    Ok((out, Literal::StringLiteral(Token{content: format!("\"{}\"", val.1), position: position(val.1)?, file: val.1.extra })))
+    let (out, pos) = position(inp)?;
+    let (out, val) = delimited(char('"'), escaped(none_of("\\"), '\\', char('"')), char('"'))(out)?;
+    Ok((out, Literal::StringLiteral(Token{content: format!("\"{}\"", val.fragment()), position: pos, file: val.extra })))
 }
 
 fn id (inp: Span) -> IResult<Span, Id> {
@@ -365,11 +375,12 @@ fn id (inp: Span) -> IResult<Span, Id> {
 }
 
 fn id2 (inp: Span) -> IResult<Span, Id> {
+    let(inp, pos) = position(inp)?;
     let (inp, start) = alpha1(inp)?;
     let (inp, end) = alphanumeric0(inp)?;
     let mut full: String = String::from(*start.fragment());
     full.push_str(end.fragment());
-    Ok((inp, Token{ content: full, position: position(start), file: start.extra }))
+    Ok((inp, Token{ content: full, position: pos, file: start.extra }))
 }
 
 fn semi (inp: Span) -> IResult<Span, char> {
@@ -387,7 +398,17 @@ fn lex<'a, F: 'a, O, E: ParseError<Span<'a>>>(inner: F) -> impl FnMut(Span<'a>) 
         delimited(multispace0, inner, multispace0)
     }
 
-
-fn tokenize<'a>(span: &Span) -> Token<'a> {
-    Token{content: String::from(span.fragment()), position: position(span), file: span.extra}
+fn make_token<'a>(content: &str, position: Span<'a>, file: String) -> Token<'a> {
+    Token{content: String::from(content), position, file}
 }
+
+fn tokenize<'a, F: 'a, E: ParseError<Span<'a>>>(inner: F) -> impl FnMut(Span<'a>) -> IResult<Span<'a>, Token, E> 
+    where F: Fn(Span<'a>) -> IResult<Span<'a>, Span<'a>, E>
+{
+    move |s| {
+    let (s, pos) = position(s)?;
+    let (s, val) = inner(s)?;
+    Ok((s, Token{content: String::from(*val.fragment()), position: pos, file: val.extra}))
+    }
+}
+

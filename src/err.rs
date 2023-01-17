@@ -7,7 +7,7 @@ type CWarning = String;
 pub fn generic_err(id: &Token, message: &str) -> CError{
     format!("Error in file {} in line {} at position {}: \n {} \nsymbol \"{}\"\n message: {}", 
             id.file, id.position.location_line(), id.position.get_utf8_column(),
-            std::str::from_utf8(id.get_line_beginning()).unwrap_or("Invalid Text"), id.fragment(), message)
+            std::str::from_utf8(id.position.get_line_beginning()).unwrap_or("Invalid Text"), id.content, message)
 }
 
 pub fn err_invalid_top_level_dec(d: &Def) -> CError{
@@ -33,40 +33,40 @@ pub fn err_invalid_actor_level_dec(d: &Def) -> CError{
 
 pub fn err_redefinition(sig: &Signature, prev: &Signature) -> CError{
     generic_err(sig.name(), format!("Symbol is already defined in {} at line {}",
-        sig.name().extra, sig.name().location_line()).as_str())
+        sig.name().file, sig.name().position.location_line()).as_str())
 }
 
 pub fn err_redefinition1(name: &Id, prev: &Signature) -> CError{
     generic_err(name, format!("Symbol is already defined in {} at line {}",
-        prev.name().extra, prev.name().location_line()).as_str())
+        prev.name().file, prev.name().position.location_line()).as_str())
 }
 
 pub fn err_wrong_deftype(s: &Token, ex: &str) -> CError {
-    generic_err(s, format!("{} was defined, but is not a {}", s, ex).as_str())
+    generic_err(s, format!("{} was defined, but is not a {}", s.content, ex).as_str())
 }
 
 pub fn err_undeclared_id(id: &Token, ex: &str) -> CError {
-    generic_err(id, format!("Undeclared identifier: symbol {} not found, or it is not a {}", id.fragment(), ex).as_str())
+    generic_err(id, format!("Undeclared identifier: symbol {} not found, or it is not a {}", id.content, ex).as_str())
 }
 
 pub fn err_unary_mismatch(op: &Token, given_type: Type, possible_sigs: &Vec<(Type, Type)>) -> CError {
     generic_err(op, &format!("cannot invoke operator {0} on operand of type {1}, possible types on which operator {0} can be used: {2}",
-                            op.fragment(), given_type.bcis_rep(), 
+                            op.content, given_type.bcis_rep(), 
                             possible_sigs.iter().map(|s| s.0.bcis_rep()).collect::<Vec<String>>().join(", ")))
 }
 
 pub fn err_binary_left_mismatch(op: &Token, given_type: Type, possible_sigs: &Vec<(Type, Type, Type)>) -> CError {
     generic_err(op, &format!("cannot invoke operator {0} on left-hand operand of type {1}, possible types on which operator {0} can be used: {2}",
-                            op.fragment(), given_type.bcis_rep(),
+                            op.content, given_type.bcis_rep(),
                             possible_sigs.iter().map(|s| s.0.bcis_rep()).collect::<Vec<String>>().join(", ")))
 }
 
 pub fn err_circular_def(id: &Token, sequence: &Vec<&Id>) -> CError {
     generic_err(id, &format!("Circular definition: this symbol is defined based on the value of a var/func which references it, called at {} {}",
                              sequence.iter()
-                             .map(|id| format!("{}, (line {}, col {} in {})\n called by", id.fragment(), id.location_line(), id.get_utf8_column(), id.extra))
+                             .map(|id| format!("{}, (line {}, col {} in {})\n called by", id.content, id.position.location_line(), id.position.get_utf8_column(), id.file))
                              .collect::<Vec<String>>().join(""),
-                             id.fragment()))
+                             id.content))
 }
 
 // The tuples are references because while the other two error functions will be used on borrowed

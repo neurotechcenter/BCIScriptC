@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use lazy_static::lazy_static;
 
 use crate::ast::Type;
 use crate::ast::Token;
@@ -8,18 +9,24 @@ use crate::verify::Signature;
 
 //The name of the hypothetical file where these built-in definitions are stored
 //this is shown to the user when there is a compile error regarding these.
-const BUILTIN_FILE_NAME: String = String::from("core");
+lazy_static!{
+static ref BUILTIN_FILE_NAME: String = String::from("core");
+}
+
+macro_rules! emp_span {
+    () => {Span::new_extra("  ", BUILTIN_FILE_NAME.to_string())};
+}
 
 macro_rules! proc{
     ($name:literal,$($tp:ident),*) => {
         {
             let mut v = Vec::new();
-            $( v.push(Type::$tp); )*
-            ($name, Signature::Proc{name: &Token{content: String::from($name), position: Span::new(), file: BUILTIN_FILE_NAME}, args: &v, is_builtin: true})
+            $( v.push(ArgDef{name: Token{content:String::new(), position: emp_span!(), file:BUILTIN_FILE_NAME.clone()}, argtype: Type::$tp}); )*
+            FakeSignature::Proc{name: Token{content: String::from($name), position: emp_span!(), file: BUILTIN_FILE_NAME.clone()}, args: v}
         }
     };
     ($name:literal) => {
-        ($name, Signature::Proc{name: &Token{content: String::from($name), position: Span::new(), file: BUILTIN_FILE_NAME}, args: &Vec::new(), is_builtin: true})
+        FakeSignature::Proc{name: Token{content: String::from($name), position: emp_span!(), file: BUILTIN_FILE_NAME.clone()}, args: Vec::new()}
     };
 }
 
@@ -27,31 +34,63 @@ macro_rules! func{
     ($name:literal,$ret:ident,$($tp:ident),*) => {
         {
             let mut v: Vec<ArgDef> = Vec::new();
-            $( v.push(ArgDef{name: &Token{content: String::new("  "), position: Span::new(), file: BUILTIN_FILE_NAME}, argtype: Type::$tp}); )*
-            ($name, Signature::Func{name: &Token{content: String::new("  "), position: Span::new(), file: BUILTIN_FILE_NAME}, args: &v, rettype: Type::$ret, referenced_symbols: Vec::new(), is_builtin: true})
+            $( v.push(ArgDef{name: Token{content: String::new(), position: emp_span!(), file: BUILTIN_FILE_NAME.clone()}, argtype: Type::$tp}); )*
+            FakeSignature::Func{name: Token{content: String::from($name), position: emp_span!(), file: BUILTIN_FILE_NAME.clone()}, args: v, rettype: Type::$ret}
         }
     };
     ($name:literal,$ret:ident) => {
-        ($name, Signature::Func{name: &Token{content: String::new("  "), position: Span::new(), file: BUILTIN_FILE_NAME}, rettype: Type::$ret, args: &Vec::new(), is_builtin: true})
+        FakeSignature::Func{name: Token{content: String::new("  "), position: Span::new(), file: BUILTIN_FILE_NAME}, rettype: Type::$ret, args: &Vec::new()}
     }
 }
-
-macro_rules! span{
-    ($name:literal) => {Span::new_extra($name, String::from("builtins"))};
-}
-/*
-macro_rules! strs{
-    ($l:literal,$r:literal) => {(String::from($l),String::from($r))};
-}
-*/
 
 macro_rules! strsn{
     ($l:literal,$r:literal) => {($l, format!(".addNormalBlock([&] (Sequence& callingSequence) {{{}}})\n", $r))}
 }
 
+/*
+ * Had to make a separate static vec of fake signatures which own their resources,
+ *  which are then copied into the HashMap of signatures, as otherwise the values are not owned by
+ *  anything.
+ */
 
-pub static BUILTINS_GLOBAL: HashMap<&str, Signature> = [
-    ("start", Signature::Event{name: &span!("start")}),
+enum FakeSignature<'a>{
+    Func{name: Token<'a>, rettype: Type, args: Vec<ArgDef<'a>> },
+    Proc{name: Token<'a>, args: Vec<ArgDef<'a>> },
+    Event{name: Token<'a>}
+}
+
+impl FakeSignature<'_> {
+    pub fn sig(&self) -> Signature {
+        match self {
+            FakeSignature::Func { name, rettype, args } => Signature::Func { name: &name,  args: &args, rettype: *rettype, referenced_symbols: Vec::new(), is_builtin: true },
+            FakeSignature::Proc { name, args } => Signature::Proc { name: &name, args: &args, is_builtin: true },
+            FakeSignature::Event { name } => Signature::Event { name: &name }
+        }
+    }
+    pub fn name(&self) -> String {
+        match self {
+            FakeSignature::Event{name, ..} => name.content.clone(),
+            FakeSignature::Func{name, ..} => name.content.clone(),
+            FakeSignature::Proc{name, ..} => name.content.clone()
+        }
+    }
+}
+lazy_static!{
+static ref BUILTINS_GLOBAL_OWNED: Vec<FakeSignature<'static>> = vec![
+    FakeSignature::Event{name: Token{content: String::from("start"), position: emp_span!(), file: BUILTIN_FILE_NAME.clone()}},
+    func!("truncate", Int, Num),
+    func!("intToStr", Str, Int),
+    func!("randInt", Int, Int, Int),
+    func!("rand", Num, Num, Num)
+];
+}
+
+pub fn get_builtins_global() -> HashMap<String, Signature<'static>>{
+    BUILTINS_GLOBAL_OWNED.iter().map(|s| (s.name(), s.sig())).collect()
+}
+
+lazy_static!{
+static ref BUILTINS_ACTOR_OWNED: Vec<FakeSignature<'static>> = vec![
     proc!("move", Num, Num),
     proc!("moveTo", Num, Num),
     proc!("graphic", Int),
@@ -63,17 +102,15 @@ pub static BUILTINS_GLOBAL: HashMap<&str, Signature> = [
     proc!("displayAsImage"),
     proc!("waitForProcess"),
     proc!("wait", Num),
-    func!("truncate", Int, Num),
-    func!("intToStr", Str, Int),
-    func!("randInt", Int, Int, Int),
-    func!("rand", Num, Num, Num)
-].to_vec().into_iter().collect();
+];
+}
 
-pub const BUILTINS_ACTOR: HashMap<&str, Signature> = [
+pub fn get_builtins_actor() -> HashMap<String, Signature<'static>> {
+    BUILTINS_ACTOR_OWNED.iter().map(|s| (s.name(), s.sig())).collect()
+}
 
-].to_vec().into_iter().collect();
-
-pub static BUILTIN_SUBS: HashMap<&str, String> = [
+lazy_static!{
+pub static ref BUILTIN_SUBS: HashMap<&'static str, String> = [
     strsn!("move", "callingSequence.setPositionX(callingSequence.positionX() + $0); callingSequence.setPositionY(callingSequence.positionX + $1);"),
     strsn!("moveTo", "callingSequence.setPositionX($0); callingSequence.setPositionY($1);"),
     strsn!("graphic", "callingSequence.setGraphic($0);"),
@@ -88,11 +125,12 @@ pub static BUILTIN_SUBS: HashMap<&str, String> = [
     strsn!("randInt", "callingSequence.randInt($0, $1)"),
     strsn!("rand", "callingSequence.rand($0, $1)")
 ].to_vec().into_iter().collect();
-
+}
 
 //The binary operators, with the first two types in the tuple being inputs, and the last type being
 //output.
-pub const BINARY_OPERATORS: HashMap<&str, Vec<(Type, Type, Type)>> = [
+lazy_static!{
+pub static ref BINARY_OPERATORS: HashMap<&'static str, Vec<(Type, Type, Type)>> = [
     ("+", vec!((Type::Int, Type::Int, Type::Int), (Type::Int, Type::Num, Type::Num), (Type::Num, Type::Int, Type::Num), (Type::Str, Type::Str, Type::Str))),
     ("-", vec!((Type::Int, Type::Int, Type::Int), (Type::Int, Type::Num, Type::Num), (Type::Num, Type::Int, Type::Num))),
     ("*", vec!((Type::Int, Type::Int, Type::Int), (Type::Int, Type::Num, Type::Num), (Type::Num, Type::Int, Type::Num))),
@@ -103,12 +141,13 @@ pub const BINARY_OPERATORS: HashMap<&str, Vec<(Type, Type, Type)>> = [
         (Type::Num, Type::Int, Type::Bool), (Type::Str, Type::Str, Type::Bool))),
 ].to_vec().into_iter().collect();
 
-pub const UNARY_OPERATORS: HashMap<&str, Vec<(Type, Type)>> = [
+
+pub static ref UNARY_OPERATORS: HashMap<&'static str, Vec<(Type, Type)>> = [
     ("-", vec!((Type::Int, Type::Int), (Type::Num, Type::Num))),
     ("!", vec!((Type::Bool, Type::Bool)))
 ].to_vec().into_iter().collect();
 
-pub const BINARY_OP_SUB: HashMap<&str, &str> = vec![
+pub static ref BINARY_OP_SUB: HashMap<&'static str, &'static str> = vec![
     ("+","+"),
     ("-","-"),
     ("*","*"),
@@ -118,7 +157,8 @@ pub const BINARY_OP_SUB: HashMap<&str, &str> = vec![
     ("|","||")
 ].into_iter().collect();
 
-pub const UNARY_OP_SUB: HashMap<&str,&str> = vec![
+pub static ref UNARY_OP_SUB: HashMap<&'static str,&'static str> = vec![
     ("-","-"),
     ("!","!")
 ].into_iter().collect();
+}

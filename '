@@ -67,8 +67,7 @@ enum SymbolType {
 //RefCell is used within the AST because Signatures borrow data from the program, and as such, the
 //borrow when verify_definitions is called lasts as long as signatures is in scope. Therefore, p
 //cannot be borrowed as mutable for verify_definitions and assign_priorities, but certain values within the program need to be 
-//mutated, hence the use of RefCell for those values; this allows the program's values to be
-//mutated behind the immutable reference passed to verify_definitions.  See the definition of verify_expr for
+//mutated, thus the use of RefCell for those values. See the definition of ver_expr for
 //justification of why this will not cause any panic.
 pub fn verify(p: &Program) -> Result<(), Vec<CError>> {
     let signatures = verify_declarations(p)?;
@@ -300,9 +299,9 @@ fn verify_def_var(name: &Id, vartype: &Option<Type>, value: &Option<Expr>, sigs:
     match value {
         Some(e) => {
             verify_expr(e, sigs)?;
-            if !type_match(e.exprtype.borrow().unwrap(), vartype.unwrap()) {
+            if !type_match(e.exprtype.unwrap(), vartype.unwrap()) {
                 Err(vec!(generic_err(name, 
-                    format!("Type mismatch: Variable is defined as type {}, but is assigned a value of type {}", vartype.unwrap().bcis_rep(), e.exprtype.borrow().unwrap().bcis_rep()).as_str())))
+                    format!("Type mismatch: Variable is defined as type {}, but is assigned a value of type {}", vartype.unwrap().bcis_rep(), e.exprtype.unwrap().bcis_rep()).as_str())))
             } else {Ok(())}
         }
         None => Ok(())
@@ -318,7 +317,7 @@ fn verify_def_func(name: &Id, args: &Vec<ArgDef>, rettype: Type, value: &Expr, e
 
 
     return if !type_match(value.exprtype.borrow().unwrap(), rettype) {
-        Err(vec!(generic_err(name, format!("Function must return a value of type {}, but returns type {}", rettype.bcis_rep(), value.exprtype.borrow().unwrap().bcis_rep()).as_str())))
+        Err(vec!(generic_err(name, format!("Function must return a value of type {}, but returns type {}", rettype.bcis_rep(), value.exprtype.unwrap().bcis_rep()).as_str())))
     } else {
         Ok(())
     }
@@ -524,7 +523,7 @@ fn verify_stm_if<'a>(ifs: &Token, cond: &Expr, seq: &Seq, sigs: &Vec<&Signatures
 fn verify_stm_call<'a>(name: &Id<'a>, call_args: &Vec<Expr>, sigs: &Vec<&Signatures>, is_builtin_call: &RefCell<Option<bool>>) -> Result<Option<(String, Signature<'a>)>, Vec<CError>> {
     match lookup_sig1(sigs, &name.content, |s| match s {Signature::Proc{..} => true, _ => false}) {
         Some(Signature::Proc { name, args, is_builtin }) => {
-            is_builtin_call.borrow_mut().insert(is_builtin.clone()); //see definition of verify_expr for explanation of why this will not panic.
+            is_builtin_call.borrow_mut().insert(is_builtin.clone()); //see definition of ver_expr for explanation of why this will not panic.
             if call_args.len() == args.len() {
                 let no_match = args.iter().zip(call_args.iter()).any(|(target_type, arg_expr)| !type_match(arg_expr.exprtype.borrow().unwrap(), target_type.argtype));
                 return if no_match {
@@ -648,7 +647,7 @@ fn assign_priorities(defs: &Vec<Def>, namespace_signatures: &Signatures) {
                 //filter defs to only funcs and vars whose priorities have not been assigned yet
                 .filter(|d| match d {Def::Var{init_priority, ..} | Def::Func{init_priority, ..} => init_priority.borrow().is_none(), _ => false}) {
                 match get_priority(d.fvname(), namespace_signatures) {
-                    //use of borrow_mut will not panic, see definition of verify_expr
+                    //use of borrow_mut will not panic, see definition of ver_expr
                     Some(p) => match d {Def::Func { init_priority, .. } | Def::Var { init_priority, .. } => {init_priority.borrow_mut().insert(p);}, _ => unreachable!()},
                     None => ()
                 }
@@ -695,22 +694,21 @@ fn priority_is_assigned(d: &Def)  -> bool{
         Def::Var { name, vartype, value, init_priority } => init_priority,
         Def::Func { name, args, rettype, expr, init_priority } => init_priority,
         _ => unreachable!()
-   }.borrow().is_some()
+   }.is_some()
 }
 
 fn verify_expr(e: &Expr, sigs: &Vec<&Signatures>) -> Result<(), Vec<CError>>{
     //this borrow_mut is valid because all other calls to borrow() on exprtype are for comparison,
-    //and also are immediately dereferenced to Copy types,
-    //so their borrow will go out of scope immediately, so there is no way that exprtype will
+    //and so their borrow will go out of scope immediately, so there is no way that exprtype will
     //be borrowed at this point.
-   e.exprtype.borrow_mut().insert(verify_uexpr(&e.expr, sigs)?);  
+   e.exprtype.borrow_mut().insert(Some(verify_uexpr(&e.expr, sigs)?));  
    Ok(())
 }
 
 fn verify_uexpr(e: &UExpr, sigs: &Vec<&Signatures>) -> Result<Type, Vec<CError>> {
     match e {
         UExpr::Value(e) => ver_value(e, sigs),
-        UExpr::UnExpr { op, expr } => ver_un_ex(op, expr.as_ref(), sigs),
+        UExpr::UnExpr { op, expr } => ver_un_ex(op, expr, sigs),
         UExpr::BinExpr { l, op, r } => ver_bin_ex(l, op, r, sigs)
     }
 }
@@ -728,7 +726,7 @@ fn ver_value(v: &Value, sigs: &Vec<&Signatures>) -> Result<Type, Vec<CError>> {
 
         }}
         Value::FuncCall(a) => { match lookup_sig1(sigs, &a.id.content,|s| match s {Signature::Func{..} => true, _ => false}) {
-            Some(Signature::Func { name, args, rettype, is_builtin, .. }) => ver_func_call(&a, args, *rettype, sigs, &a.is_builtin, *is_builtin),
+            Some(Signature::Func { name, args, rettype, is_builtin, .. }) => ver_func_call(&mut a, args, *rettype, sigs, &mut a.is_builtin, *is_builtin),
             Some(_) => unreachable!(),
             None => Err(vec!(err_undeclared_id(&a.id, "function")))
         }}
@@ -745,8 +743,8 @@ fn ver_value(v: &Value, sigs: &Vec<&Signatures>) -> Result<Type, Vec<CError>> {
 
 fn ver_func_call(call: &FuncCall, args: &Vec<ArgDef>, rettype: Type, sigs: &Vec<&Signatures>, is_builtin_call: &RefCell<Option<bool>>, is_builtin_sig: bool ) -> Result<Type, Vec<CError>> {
     is_builtin_call.borrow_mut().insert(is_builtin_sig); //see definition of verify_expr
-    for arg in call.args { //verify call arguments
-        verify_expr(&arg, sigs)?;
+    for arg in &mut call.args { //verify call arguments
+        verify_expr(arg, sigs)?;
     }
     if call.args.len() == args.len() {
         let no_match = args.iter().zip(call.args.iter()).any(|(target_type, arg_expr)| !type_match(arg_expr.exprtype.borrow().unwrap(), target_type.argtype));
@@ -757,7 +755,7 @@ fn ver_func_call(call: &FuncCall, args: &Vec<ArgDef>, rettype: Type, sigs: &Vec<
     return Err(vec!(generic_err(&call.id, format!("function {} called with incorrect arguments, expected {}, found {}",
                                                  call.id.content,
                                                  args.iter().map(|a| a.argtype.bcis_rep()).collect::<Vec<String>>().join(", "),
-                            call.args.iter().map(|arg| arg.exprtype.borrow().unwrap().bcis_rep()).collect::<Vec<String>>().join(", ")).as_str())));
+                            call.args.iter().map(|arg| arg.exprtype.unwrap().bcis_rep()).collect::<Vec<String>>().join(", ")).as_str())));
 }
 
 fn type_match(given: Type, target: Type) -> bool {
@@ -769,10 +767,10 @@ fn type_match(given: Type, target: Type) -> bool {
     }
 }
 
-fn ver_un_ex(op: &UnOp, expr: &Expr, sigs: &Vec<&Signatures>) -> Result<Type, Vec<CError>> {
+fn ver_un_ex(op: &UnOp, expr: &mut Expr, sigs: &Vec<&Signatures>) -> Result<Type, Vec<CError>> {
     verify_expr(expr, sigs)?;
     //Operand expression's type
-    let exptype = expr.exprtype.borrow().unwrap(); // previous line should have given expr a type, or early returned,
+    let exptype = expr.exprtype.unwrap(); // previous line should have given expr a type, or early returned,
                                           // there is no situation in which the exprtype would be None here
     //Possible signatures (In Type, Out Type) of the operator
     let op_sigs = UNARY_OPERATORS.get(op.content.as_str()).unwrap(); //Operator character will be valid
@@ -782,11 +780,11 @@ fn ver_un_ex(op: &UnOp, expr: &Expr, sigs: &Vec<&Signatures>) -> Result<Type, Ve
         .ok_or(vec!(err_unary_mismatch(op, exptype, op_sigs)))
 }
 
-fn ver_bin_ex(l: &Expr, op: &BinOp, r: &Expr, sigs: &Vec<&Signatures>) -> Result<Type, Vec<CError>> {
+fn ver_bin_ex(l: &mut Expr, op: &BinOp, r: &mut Expr, sigs: &Vec<&Signatures>) -> Result<Type, Vec<CError>> {
     verify_expr(l, sigs)?;
     verify_expr(r, sigs)?;
-    let ltype = l.exprtype.borrow().unwrap();
-    let rtype = r.exprtype.borrow().unwrap();
+    let ltype = l.exprtype.unwrap();
+    let rtype = r.exprtype.unwrap();
 
     let op_sigs = BINARY_OPERATORS.get(op.content.as_str()).unwrap();
 

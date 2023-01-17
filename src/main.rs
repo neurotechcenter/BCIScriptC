@@ -7,13 +7,21 @@ mod generate;
 
 use std::io::Write;
 
+
 fn main() -> Result<(),Box<dyn std::error::Error>> {
     let files = std::env::args();
-    let program: ast::Program = Vec::new();
+
+    let mut filebytes: Vec<(String, Vec<u8>)> = Vec::new();
     for file in files {
-        let filetext = String::from_utf8_lossy(&std::fs::read(file)?);
-        let filespan = parse::Span::new_extra(&filetext, file);
-        program.append(&mut parse::program(filespan)?);
+        filebytes.push((file.clone(), std::fs::read(&file)?));
+    }
+    let mut filespans: Vec<parse::Span> = Vec::new();
+    for (filename, bytes) in &filebytes {
+        filespans.push(parse::Span::new_extra(std::str::from_utf8(&bytes)?, filename.clone()));
+    }
+    let mut program: ast::Program = Vec::new();
+    for span in filespans {
+        program.append(&mut parse::program(span)?);
     }
     verify::verify(&mut program).map_err(|e| simple_error::simple_error!(e.join("\n")));
     let program_out = generate::generate_program(program);
