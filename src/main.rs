@@ -21,7 +21,10 @@ fn main() -> Result<(),Box<dyn std::error::Error>> {
     }
     let mut program: ast::Program = Vec::new();
     for span in filespans {
-        program.append(&mut parse::program(span)?);
+        program.append(&mut parse::program(span).map_err(
+         |e| Box::new(simple_error::simple_error!(e.to_string()))
+            )?
+        );
     }
     verify::verify(&mut program).map_err(|e| simple_error::simple_error!(e.join("\n")));
     let program_out = generate::generate_program(program);

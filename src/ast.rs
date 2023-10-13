@@ -19,12 +19,12 @@ pub enum Def<'a> {
     Proc{name: Id<'a>, args: Vec<ArgDef<'a>>, seq: Seq<'a>},
     Func{name: Id<'a>, args: Vec<ArgDef<'a>>, rettype: Type, expr: Expr<'a>, init_priority: RefCell<Option<u64>>},
     Event{name: Id<'a>},
-    StateEvent{name: Id<'a>},
     Timer{name: Id<'a>},
-    State{name: Id<'a>, statetype: StateType},
-    Var{name: Id<'a>, vartype: Option<Type>, value: Option<Expr<'a>>, init_priority: RefCell<Option<u64>>},
+    StateEvent{name: Id<'a>},
+    Var{name: Id<'a>, vartype: RefCell<Option<Type>>, value: Option<Expr<'a>>, init_priority: RefCell<Option<u64>>},
     Graphics{files: Vec<Literal<'a>>},
-    Sounds{files: Vec<Literal<'a>>}
+    Sounds{files: Vec<Literal<'a>>},
+    Param{name: Id<'a>, paramtype: RefCell<Option<Type>>, value: Option<Literal<'a>>}
 }
 
 /**
@@ -36,7 +36,7 @@ pub type Seq<'a> = Vec<Stm<'a>>;
 pub enum Stm<'a> {
     Call{id: Id<'a>, args: Vec<Expr<'a>>, is_builtin: RefCell<Option<bool>>},
     Assign{id: Id<'a>, val: Expr<'a>},
-    Var{name: Id<'a>, vartype: Option<Type>, value: Option<Expr<'a>>},
+    Var{name: Id<'a>, vartype: RefCell<Option<Type>>, value: Option<Expr<'a>>},
     Timer{name: Id<'a>, cmd: TimerCmd},
     Repeat{kw: Token<'a>, val: Expr<'a>, seq: Seq<'a>},
     While{kw: Token<'a>, cond: Expr<'a>, seq: Seq<'a>},
@@ -71,7 +71,7 @@ pub struct Expr<'a>{
  * An untyped expression
  */
 pub enum UExpr<'a>{
-    BinExpr{ l: Box<Expr<'a>>, op: BinOp<'a>, r: Box<Expr<'a>> },
+    BinExpr{ op: BinOp<'a>, l: Box<Expr<'a>>, r: Box<Expr<'a>> },
     UnExpr{ op: UnOp<'a>, expr: Box<Expr<'a>> },
     Value(Value<'a>)
 }
@@ -138,8 +138,8 @@ pub struct FuncCall<'a> {
     pub is_builtin: RefCell<Option<bool>>
 }
 
-
 pub type BinOp<'a> = Token<'a>;
+
 pub type UnOp<'a> = Token<'a>;
 
 pub type Id<'a> = Token<'a>;

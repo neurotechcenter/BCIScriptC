@@ -1,4 +1,5 @@
 use std::cell::RefCell;
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::ops::Add;
 
@@ -26,6 +27,7 @@ pub enum Signature<'a>{
     Var{name: &'a Id<'a>, vartype: Type, referenced_symbols: Vec<(&'a Id<'a>, SymbolType)>, initialized: bool},
     StateEvent{name: &'a Id<'a>},
     Timer{name: &'a Id<'a>},
+    Param{name: &'a Id<'a>, paramtype: &'a Option<Type>}
 }
 
 impl Signature<'_> {
@@ -40,6 +42,7 @@ impl Signature<'_> {
             Signature::Var{name, ..} => name,
             Signature::StateEvent { name } => name,
             Signature::Timer { name } => name,
+            Signature::Param{ name, .. } => name
         }
     }
     pub fn str(&'_ self) -> &'_ str {
@@ -135,8 +138,8 @@ fn verify_declaration<'a>(d: &'a Def<'a>, sigs: &Signatures) -> Result<Signature
         Def::Event{name}                        => not_already_declared(&name, sigs).map(|_| Signature::Event { name }),
         Def::StateEvent { name }                => not_already_declared(&name, sigs).map(|_| Signature::StateEvent{name}),
         Def::Timer { name }                     => not_already_declared(&name, sigs).map(|_| Signature::Timer{name}),
-        Def::State{name, statetype}             => not_already_declared(&name, sigs).map(|_| Signature::State{name, statetype}),
-        Def::Var{name, vartype, value, ..}          => verify_dec_variable(&name, &vartype, &value, sigs),
+        Def::Param {name, paramtype, value}                   => verify_dec_param(&name, &paramtype, &value, sigs),
+        Def::Var{name, vartype, value, ..}          => verify_dec_variable(&name, vartype, &value, sigs),
         _ => panic!("verify_declaration given invalid declaration type")
     }
 }
@@ -148,10 +151,38 @@ fn not_already_declared(name: &Id, sigs: &Signatures) -> Result<(), Vec<CError>>
     }
 }
 
-fn verify_dec_variable<'a>(name: &'a Id<'a>, vartype: &Option<Type>, expr: &'a Option<Expr<'a>>, sigs: &Signatures) -> Result<Signature<'a>, Vec<CError>>{
+
+fn verify_dec_param<'a>(name: &Id<'a>, paramtype: &RefCell<Option<Type>>, value: &Option<Literal<'a>>, sigs: &Signatures) -> Result<Signature<'a>, Vec<CError>> {
     not_already_declared(name, sigs)?;
-    match vartype {
-        Some(t) => Ok(Signature::Var { name, vartype: *t, referenced_symbols:
+    let tp = paramtype.clone().take();
+    let tp = match (tp, value) {
+        (None, None) => Err(vec!(generic_err(name, "Parameter type can't be inferred, provide either a type or a value"))),
+        (Some(ptype), None) => Ok(ptype),
+        (None, Some(value)) => match get_lit_type(value) {Type::Bool => Err(vec!(generic_err(name, "Boolean parameters are not allowed."))), a => Ok(a)},
+        (Some(ptype), Some(value)) => if ptype == get_lit_type(value) {
+            Ok(ptype)
+        } else {
+            Err(vec!(generic_err(name, "Mismatch between given parameter type and value")))
+        }
+    }?;
+    paramtype.get_mut().insert(tp);
+    return Ok(Signature::Param { name: name, paramtype: &paramtype.borrow() });
+
+}
+
+fn get_lit_type(tp: &Literal) -> Type {
+    match tp {
+        Literal::IntLiteral(_) => Type::Int,
+        Literal::NumLiteral(_) => Type::Num,
+        Literal::BoolLiteral(_) => Type::Bool,
+        Literal::StringLiteral(_) => Type::Str
+    }
+}
+
+fn verify_dec_variable<'a>(name: &'a Id<'a>, vartype: &RefCell<Option<Type>>, expr: &'a Option<Expr<'a>>, sigs: &Signatures) -> Result<Signature<'a>, Vec<CError>>{
+    not_already_declared(name, sigs)?;
+    match *vartype.borrow() {
+        Some(t) => Ok(Signature::Var { name, vartype: t, referenced_symbols:
             match expr {
                 Some(expr) => get_referenced_symbols(expr),
                 None => Vec::new()
@@ -178,7 +209,7 @@ fn get_referenced_symbols<'a>(expr: &'a Expr<'a>) -> Vec<(&'a Id<'a>, SymbolType
 
 fn verify_dec_actor<'a>(name: &'a Id<'a>, members: &'a Vec<Def<'a>>, sigs: &Signatures) -> Result<Signature<'a>, Vec<CError>>{
     let mut errs: Vec<CError> = members.iter()
-       .filter(|d| match d {Def::State{..} | Def::Actor {..} | Def::StateEvent{..} => true, _ => false})
+       .filter(|d| match d {Def::Param{..} | Def::Actor {..} | Def::StateEvent{..} => true, _ => false})
        .map(err_invalid_actor_level_dec)
        .collect::<Vec<CError>>();    
 
@@ -217,7 +248,7 @@ fn ver_actor_dec<'a>(def: &'a Def<'a>, sigs: &Signatures) -> Option<Result<Signa
             |a| Signature::Func{name, args, rettype: *rettype, referenced_symbols: get_referenced_symbols(&expr), is_builtin: false})),
         Def::Event{name}                        => Some(not_already_declared(&name, sigs).map(|_| Signature::Event { name })),
         Def::Timer { name }                     => Some(not_already_declared(&name, sigs).map(|_| Signature::Timer{name})),
-        Def::Var{name, vartype, value, ..}          => Some(verify_dec_variable(&name, &vartype, &value, sigs)),
+        Def::Var{name, vartype, value, ..}          => Some(verify_dec_variable(&name, vartype, &value, sigs)),
         Def::Proc { name, args, seq }           => Some(not_already_declared(&name, sigs).map(|_| Signature::Proc { name,  args, is_builtin: false })),
         Def::Graphics { files }                 => None,
         Def::Sounds { files }                   => None,
@@ -259,14 +290,14 @@ fn verify_definitions(p: &Program, sigs: &Vec<&Signatures>) -> Vec<CError>  {
 fn verify_definition(d: &Def, sigs: &Vec<&Signatures>) -> Result<(), Vec<CError>> {
     match d {
         Def::Actor { name, members } => verify_def_actor(name, members, sigs),
-        Def::Var { name, vartype, value, .. } => verify_def_var(name, vartype, value, sigs),
+        Def::Var { name, vartype, value, .. } => verify_def_var(name, &vartype.borrow(), value, sigs),
         Def::Func { name, args, rettype, expr, .. } => verify_def_func(name, args, *rettype, expr, sigs),
             //Single names do not need to be verified
         Def::Event { .. }  
-        | Def::State { .. }  
         | Def::Timer { .. } 
         | Def::StateEvent { .. }
         | Def::Sounds { .. }
+        | Def::Param { .. }
         | Def::Graphics { .. } => Ok(()),
 
         Def::Proc { name, args, seq } => verify_def_proc(name, args, seq, sigs),
@@ -285,8 +316,10 @@ fn verify_def_actor(name: &Id, members: &Vec<Def>, sigs: &Vec<&Signatures>) -> R
     
     let mut errs = members.iter_mut().flat_map(|d| match verify_definition(d, &all_sigs) {Ok(()) => Vec::new(), Err(e) => e}).collect::<Vec<CError>>();
 
-    let mut errscirc = members.iter().filter(|d| match d {Def::Var{..} | Def::Func{..} => true, _ => false}).map(|d| check_circular_def(d, local_sigs))
-        .fold(Vec::new(), |l, r| {l.append(&mut r); return l;});
+    let mut errscirc = members.iter()
+        .filter(|d| match d {Def::Var{..} | Def::Func{..} => true, _ => false})
+        .map(|d| check_circular_def(d, local_sigs))
+        .fold(Vec::new(), |mut l, r| {l.extend(r); return l;});
     errs.append(&mut errscirc);
 
     assign_priorities(members, local_sigs);
@@ -489,23 +522,48 @@ fn verify_stm_timer<'a>(name: &Id<'a>, cmd: &TimerCmd, sigs: &Vec<&Signatures>) 
     }
 }
 
-fn verify_stm_var<'a>(name: &Id<'a>, vartype: &Option<Type>, value: &Option<Expr>, sigs: &Vec<&Signatures> ) -> Result<Option<(String, Signature<'a>)>, Vec<CError>> {
+fn verify_stm_var<'a>(name: &Id<'a>, vartype: &RefCell<Option<Type>>, value: &Option<Expr>, sigs: &Vec<&Signatures> ) -> Result<Option<(String, Signature<'a>)>, Vec<CError>> {
     match lookup_sig_local_any(sigs, &name.content) {
         Some(s) => return Err(vec!(err_redefinition1(name, s))),
         None => ()
     }
-    match (vartype, value) {
-        (None, None) => Err(vec!(generic_err(name, "Variable type cannot be inferred. Either provide an explicit type annotation or initialize the variable."))),
-        (Some(t), None) => Ok(Some((name.content.clone(), Signature::Var{name, referenced_symbols: Vec::new(), vartype: *t, initialized: value.is_some()}))),
-        (None, Some(e)) => {verify_expr(e, sigs)?;
-            vartype.insert(e.exprtype.borrow().unwrap());
-            Ok(Some((name.content.clone(), Signature::Var{name, referenced_symbols: Vec::new(), vartype: e.exprtype.borrow().unwrap(), initialized: value.is_some()})))
-        },
-        (Some(t), Some(e)) => {verify_expr(e, sigs)?; 
-            if !type_match(e.exprtype.borrow().unwrap(), *t) {
-                Err(vec!(generic_err(name, format!("Variable is of type {}, but its assignment expression is of type {}", t.bcis_rep(), e.exprtype.borrow().unwrap().bcis_rep()).as_str())))
+
+    let t_is_none = vartype.borrow().is_none();
+    let v_is_none = value.is_none();
+
+    if t_is_none {
+        if v_is_none {
+            return Err(vec!(generic_err(name, "Variable type cannot be inferred. Either provide an explicit type annotation or initialize the variable.")));
+        } else {
+            verify_expr(&value.as_ref().unwrap(), sigs)?;
+            let extype = value.as_ref().unwrap().exprtype.borrow().unwrap();
+            vartype.borrow_mut().insert(extype);
+            return Ok(Some((name.content.clone(), Signature::Var{name, referenced_symbols: Vec::new(), vartype: extype, initialized: value.is_some()})));
+        }
+
+    }
+    else {
+        if v_is_none {
+            return Ok(Some((name.content.clone(), Signature::Var{name, referenced_symbols: Vec::new(), vartype: vartype.borrow().unwrap(), initialized: false})));
+        }
+        else {
+            verify_expr(&value.as_ref().unwrap(), sigs)?; 
+            if !type_match(value.as_ref().unwrap().exprtype.borrow().unwrap(), vartype.borrow().unwrap()) {
+                return Err(vec!(generic_err(name,
+                                     format!(
+                                         "Variable is of type {}, but its assignment expression is of type {}",
+                                         vartype.borrow().unwrap().bcis_rep(),
+                                         value.as_ref().unwrap().exprtype.borrow().unwrap().bcis_rep()
+                                     ).as_str()
+                                     )));
             } else {
-                Ok(Some((name.content.clone(), Signature::Var { name, vartype: *t, referenced_symbols: Vec::new(), initialized: value.is_some() })))
+                return Ok(Some((
+                name.content.clone(),
+                Signature::Var { name,
+                    vartype: vartype.borrow().clone().unwrap(),
+                    referenced_symbols: Vec::new(),
+                    initialized: value.is_some() }
+                )));
             }
         }
     }
@@ -546,8 +604,8 @@ fn verify_stm_call<'a>(name: &Id<'a>, call_args: &Vec<Expr>, sigs: &Vec<&Signatu
 
 fn check_circular_def(d: &Def, sigs: &Signatures) -> Vec<CError> {
     let possible_circ = match d {
-        Def::Var { name, vartype, value, .. }  => get_circular_def(name, name, SymbolType::Var, get_refs_of_def(name,  sigs), sigs),
-        Def::Func { name, args, rettype, expr, .. } => get_circular_def(name, name, SymbolType::Func, get_refs_of_def(name,  sigs), sigs),
+        Def::Var { name, .. }  => get_circular_def(name, name, SymbolType::Var, &get_refs_of_def(name,  sigs), sigs),
+        Def::Func { name, args, .. } => get_circular_def(name, name, SymbolType::Func, &get_refs_of_def(name,  sigs), sigs),
         _ => panic!("check_circular_def called on def which is not a var or func")
     };
     let name = match d {
@@ -568,7 +626,7 @@ fn check_circular_def(d: &Def, sigs: &Signatures) -> Vec<CError> {
 //returns path to a circular reference as a vec of ids, with the first item being the reference to
 //whatever symbol is being searched for.
 //Will panic if any symbol in any expression is unknown
-fn get_circular_def<'a>(target: &Id<'a>, name: &Id<'a>, t: SymbolType, referenced_symbols: &Vec<(&Id<'a>, SymbolType)>, sigs: &Signatures) -> Option<Vec<&'a Id<'a>>> {
+fn get_circular_def<'a>(target: &Id<'a>, name: &Id<'a>, t: SymbolType, referenced_symbols: &Vec<(&Id<'a>, SymbolType)>, sigs: &'a Signatures<'a>) -> Option<Vec<Id<'a>>> {
     
     match t { //the repeated code between the two branches is because i couldnt just assign the
               //iterator `refs` conditionally because the closures for `filter` would have different types
@@ -577,35 +635,36 @@ fn get_circular_def<'a>(target: &Id<'a>, name: &Id<'a>, t: SymbolType, reference
             //if a fn is not within this namespace, it cannot cause a circular definition.
             let args = match sig { Some(Signature::Func { args, ..}) => args, _ => return None }; 
             let argscontains = |n: &Id| args.iter().any(|a| a.name.content == n.content);
-            let refs = referenced_symbols.iter().filter(|(a, b)| !(b == &SymbolType::Var && argscontains(a)));  //filter out the function parameters
+            let mut refs = referenced_symbols.into_iter().filter(|(a, b)| !(b == &SymbolType::Var && argscontains(a)));  //filter out the function parameters
             let self_ref = refs.find(|(nm, st)| nm.content == target.content && st == &t); 
                                                                                
             match self_ref {
-                Some(n) => return Some(vec!(n.0)),
+                Some(n) => return Some(vec!(n.0.clone())),
                 None => ()
             }
-
-            match refs.map(|(refname,symboltype)| get_circular_def(target, refname, t, get_refs_of_def(refname, sigs), sigs)) //search for circular def in referenced symbols of referenced symbols
+            
+            //search for circular def in referenced symbols of referenced symbols
+            match refs.map(|(refname,symboltype)| get_circular_def(target, refname, *symboltype, &get_refs_of_def(refname, sigs), sigs))  
                         .find(|d| match d {Some(_) => true, None => false})
                         {
-                            Some(Some(v)) => {v.push(name); return Some(v)},
+                            Some(Some(mut v)) => {v.push(name.clone()); return Some(v)},
                             Some(None) => unreachable!(),
                             None => return None,
                         }
             }
         SymbolType::Var => {
             if lookup_sig(sigs, &name.content).is_none() {return None};
-            let refs = referenced_symbols.iter();
+            let mut refs = referenced_symbols.iter();
             let self_ref = refs.find(|(nm, st)| nm.content == target.content && st == &t); 
             match self_ref {
-                Some(n) => return Some(vec!(n.0)),
+                Some(n) => return Some(vec!(n.0.clone())),
                 None => ()
             }
 
-            match refs.map(|(refname,symboltype)| get_circular_def(target, refname, t, get_refs_of_def(refname, sigs), sigs)) //search for circular def in referenced symbols of referenced symbols
+            match refs.map(|(refname,symboltype)| get_circular_def(target, refname, *symboltype, &get_refs_of_def(refname, sigs), sigs)) //search for circular def in referenced symbols of referenced symbols
                         .find(|d| match d {Some(_) => true, None => false})
                         {
-                            Some(Some(v)) => {v.push(name); return Some(v)},
+                            Some(Some(mut v)) => {v.push(name.clone()); return Some(v)},
                             Some(None) => unreachable!(),
                             None => return None,
                         }
@@ -616,12 +675,12 @@ fn get_circular_def<'a>(target: &Id<'a>, name: &Id<'a>, t: SymbolType, reference
 /*
  * Looks up referenced symbols of def within local namespace.
  */
-fn get_refs_of_def<'a>(name: &Id<'a>,  sigs: &Signatures) -> &'a Vec<(&'a Id<'a>, SymbolType)> {
-    match lookup_sig(sigs, &name.content) {
-        Some(Signature::Var { name, vartype, referenced_symbols, .. }) => referenced_symbols,
-        Some(Signature::Func { name, args, rettype, referenced_symbols, .. }) => referenced_symbols,
+fn get_refs_of_def<'a>(name: &Id<'a>,  sigs: &'a Signatures<'a>) -> Cow<'a, Vec<(&'a Id<'a>, SymbolType)>> {
+    match lookup_sig(sigs, name.content.as_str()) {
+        Some(Signature::Var { referenced_symbols, .. }) => Cow::Borrowed(referenced_symbols),
+        Some(Signature::Func { referenced_symbols, .. }) => Cow::Borrowed(referenced_symbols),
         Some(_) => unreachable!(),
-        None => &Vec::new()
+        None => Cow::Owned(Vec::new())
     }                            
 }
 
@@ -644,7 +703,7 @@ fn assign_priorities(defs: &Vec<Def>, namespace_signatures: &Signatures) {
         }
 
         while !all_assigned(defs.iter()) {
-            for d in defs.iter_mut()
+            for d in defs.iter()
                 //filter defs to only funcs and vars whose priorities have not been assigned yet
                 .filter(|d| match d {Def::Var{init_priority, ..} | Def::Func{init_priority, ..} => init_priority.borrow().is_none(), _ => false}) {
                 match get_priority(d.fvname(), namespace_signatures) {
@@ -745,8 +804,8 @@ fn ver_value(v: &Value, sigs: &Vec<&Signatures>) -> Result<Type, Vec<CError>> {
 
 fn ver_func_call(call: &FuncCall, args: &Vec<ArgDef>, rettype: Type, sigs: &Vec<&Signatures>, is_builtin_call: &RefCell<Option<bool>>, is_builtin_sig: bool ) -> Result<Type, Vec<CError>> {
     is_builtin_call.borrow_mut().insert(is_builtin_sig); //see definition of verify_expr
-    for arg in call.args { //verify call arguments
-        verify_expr(&arg, sigs)?;
+    for arg in &call.args { //verify call arguments
+        verify_expr(arg, sigs)?;
     }
     if call.args.len() == args.len() {
         let no_match = args.iter().zip(call.args.iter()).any(|(target_type, arg_expr)| !type_match(arg_expr.exprtype.borrow().unwrap(), target_type.argtype));
@@ -790,31 +849,22 @@ fn ver_bin_ex(l: &Expr, op: &BinOp, r: &Expr, sigs: &Vec<&Signatures>) -> Result
 
     let op_sigs = BINARY_OPERATORS.get(op.content.as_str()).unwrap();
 
-    let left_matches  = op_sigs.iter().filter(|s| s.0 == ltype);
+    let left_matches = op_sigs.iter().filter(|s| s.0 == ltype).collect::<Vec<&(Type, Type, Type)>>();
 
-    if iter_empty(&left_matches) {
+    if left_matches.is_empty() {
         return Err(vec!(err_binary_left_mismatch(op, ltype, op_sigs)))
     }
 
-    left_matches.find(|possible_signature| possible_signature.1 == rtype)
+    left_matches.iter().find(|possible_signature| possible_signature.1 == rtype)
         .map(|sig| sig.2) // extract the operator's return type on given values
         .ok_or(vec!(err_binary_right_mismatch(op, ltype, rtype, &left_matches)))
-}
-
-fn iter_empty<F>(it: &F) -> bool
-    where F: Iterator
-{
-    match it.peekable().peek() {
-        Some(_) => true,
-        None => false
-    }
 }
 
 /*
  * Looks up a signature within a single namespace. Since symbols cannot share names within one
  * namespace, there is no need for a match condition.
  */
-fn lookup_sig<'a>(v: &Signatures, s: &str) -> Option<&'a Signature<'a>> {
+fn lookup_sig<'a>(v: &'a Signatures, s: &str) -> Option<&'a Signature<'a>> {
         v.get(s)
 }
 //looks up a signature while matching against the signature type,
@@ -823,7 +873,7 @@ fn lookup_sig<'a>(v: &Signatures, s: &str) -> Option<&'a Signature<'a>> {
 //When given a matching function which returns true on the correct type of signature, it should
 //simulate how BCIEvent calls functions, procedures, variables, etc, moving up from the sequence
 //level to the actor level to the application level.
-fn lookup_sig1<'a, F>(v: &Vec<&Signatures>, s: &str, m: F) -> Option<&'a Signature<'a>> 
+fn lookup_sig1<'a, F>(v: &Vec<&'a Signatures<'a>>, s: &str, m: F) -> Option<&'a Signature<'a>> 
     where F: Fn(&Signature) -> bool
 {
     for sigl in v {
@@ -842,13 +892,13 @@ fn lookup_sig1<'a, F>(v: &Vec<&Signatures>, s: &str, m: F) -> Option<&'a Signatu
  * Checks if a signature has been defined locally by only checking the first member of the vector
  * of namespaces
  */
-fn lookup_sig_local<'a, F>(v: &Vec<&Signatures>, s: &str, m: F) -> Option<&'a Signature<'a>> 
+fn lookup_sig_local<'a, F>(v: &Vec<&'a Signatures>, s: &str, m: F) -> Option<&'a Signature<'a>> 
     where F: Fn(&Signature) -> bool
 {
     lookup_sig1(&vec!(v.get(0).unwrap()), s, m)
 }
 
-fn lookup_sig_local_any<'a>(v: &Vec<&Signatures>, s: &str) -> Option<&'a Signature<'a>> 
+fn lookup_sig_local_any<'a>(v: &Vec<&'a Signatures>, s: &str) -> Option<&'a Signature<'a>> 
 {
     lookup_sig(v.get(0).unwrap(), s)
 }

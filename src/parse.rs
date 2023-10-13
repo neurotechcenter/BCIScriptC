@@ -20,6 +20,23 @@ use nom::{
 use nom_locate::{LocatedSpan, position};
 use crate::ast::*;
 
+macro_rules! lex{
+    ($nm:ident) => {delimited(multispace0, $nm, multispace0)};
+    ($nm:ident($inp:literal)) => {delimited(multispace0, $nm($inp), multispace0)};
+}
+
+
+#[allow(unused_macros)]
+macro_rules! tokenop{
+    ($tag:literal,$tp:ident::$mem:ident,$inp:ident) => {tokenize(lex!(tag($tag)))($inp).map(|(r, t)| (r, $tp::$mem(t)))}
+}
+
+#[allow(unused_macros)]
+macro_rules! exprify{
+    ($l:ident, $op:ident, $r:ident) => {|inp| tuple(($l, $op, $r))(inp)
+        .map(|(tx, (l, op, r))| (tx, Expr{expr: UExpr::BinExpr{l: Box::new(l), op: op, r: Box::new(r)}, exprtype: RefCell::new(None)}))}
+}
+
 pub type Span<'a> = LocatedSpan<&'a str, String>;
 
 pub fn program<'a>(inp: Span<'a>) -> Result<Program<'a>, Box<dyn std::error::Error + 'a>> {
@@ -33,12 +50,16 @@ fn def(inp: Span) -> IResult<Span, Def> {
         proc,
         func,
         event,
-        state,
         timer_def,
         var,
         graphics,
         sounds,
-        stateevent))(inp)
+        stateevent,
+        param))(inp)
+}
+
+fn param(inp: Span) -> IResult<Span, Def> {
+    unimplemented!()
 }
 
 fn actor(inp: Span) -> IResult<Span, Def> { 
@@ -66,11 +87,6 @@ fn event(inp: Span) -> IResult<Span, Def> {
     Ok((rest, Def::Event{name: val.1}))
 }
 
-fn state(inp: Span) -> IResult<Span, Def> {
-    let (rest, val) = tuple((tag("state "), id, state_type))(inp)?;
-    Ok((rest, Def::State{name: val.1, statetype: val.2}))
-}
-
 fn timer_def(inp: Span) -> IResult<Span, Def> {
     let (rest, val) = tuple((tag("timer "), id))(inp)?;
     Ok((rest, Def::Timer { name: val.1 }))
@@ -82,13 +98,15 @@ fn stateevent(inp: Span) -> IResult<Span, Def> {
 }
 
 fn var(inp: Span) -> IResult<Span, Def> {
-    let (rest, val) = tuple((tag("var "), id, opt(tuple((lex(char(':')), data_type))), opt(tuple((lex(char('=')), expr))), semi))(inp)?;
+    let (rest, val) = tuple((tag("var "), id, opt(tuple((lex!(char(':')), data_type))), opt(tuple((lex!(char('=')), expr))), semi))(inp)?;
     Ok((rest, Def::Var{name: val.1, 
-        vartype: 
-            match val.2{ //output if opt(tuple(a,b))) where a is ':' and b is data_type
-                Some((a,b)) => Some(b),
-                None => None
-            }, 
+        vartype:
+            RefCell::new(
+                match val.2{ //output if opt(tuple(a,b))) where a is ':' and b is data_type
+                    Some((a,b)) => Some(b),
+                    None => None
+                }
+            ), 
         value: 
             match val.3{
                 Some((a, b)) => Some(b),
@@ -99,17 +117,17 @@ fn var(inp: Span) -> IResult<Span, Def> {
 }
 
 fn graphics(inp: Span) -> IResult<Span, Def> {
-    let (rest, val) = tuple((tag("graphics"), delimited(lex(char('[')), separated_list0(lex(char(',')), lex(str_lit)), char(']'))))(inp)?;
+    let (rest, val) = tuple((tag("graphics"), delimited(lex!(char('[')), separated_list0(lex!(char(',')), lex!(str_lit)), char(']'))))(inp)?;
     Ok((rest, Def::Graphics{files: val.1}))
 }
 
 fn sounds(inp: Span) -> IResult<Span, Def> {
-    let (rest, val) = tuple((tag("sounds"), delimited(lex(char('[')), separated_list0(lex(char(',')), lex(str_lit)), char(']'))))(inp)?;
+    let (rest, val) = tuple((tag("sounds"), delimited(lex!(char('[')), separated_list0(lex!(char(',')), lex!(str_lit)), char(']'))))(inp)?;
     Ok((rest, Def::Sounds{files: val.1}))
 }
 
 fn block_sequence(inp: Span) -> IResult<Span, Vec<Stm>> {
-    delimited(lex(char('{')), many0(stm), lex(char('}')))(inp)
+    delimited(lex!(char('{')), many0(stm), lex!(char('}')))(inp)
 }
 
 fn stm (inp: Span) -> IResult<Span, Stm> {
@@ -185,7 +203,7 @@ fn call(inp: Span) -> IResult<Span, Stm>{
 }
 
 fn assign(inp: Span) -> IResult<Span, Stm>{
-    let (out, val) = tuple((id, lex(char('=')), expr, semi))(inp)?;
+    let (out, val) = tuple((id, lex!(char('=')), expr, semi))(inp)?;
     Ok((out, Stm::Assign{id: val.0, val: val.2}))
 }
 
@@ -202,13 +220,16 @@ fn loop_while(inp: Span) -> IResult<Span, Stm> {
 }
 
 fn local_var(inp: Span) -> IResult<Span, Stm> {
-    let (out, val) = tuple((tag("var "), id, opt(tuple((lex(char(':')), data_type,))), opt(tuple((lex(char('=')), expr))), semi))(inp)?;
+    let (out, val) = tuple((tag("var "), id, opt(tuple((lex!(char(':')), data_type,))), opt(tuple((lex!(char('=')), expr))), semi))(inp)?;
     Ok((out, Stm::Var{name: val.1, 
         vartype: 
-        match val.2 { //output of opt(tuple(a,b)) where a is ":" and b is the type
-            Some((a,b)) => Some(b),
-            None => None
-        },
+        
+        RefCell::new( 
+            match val.2 { //output of opt(tuple(a,b)) where a is ":" and b is the type
+                Some((a,b)) => Some(b),
+                None => None
+            }
+        ),
         value: 
         match val.3{
             Some((a,b)) => Some(b),
@@ -248,22 +269,22 @@ fn timed(inp: Span) -> IResult<Span, Stm> {
 
 
 fn arg_defs(inp: Span) -> IResult<Span, Vec<ArgDef>> {
-    separated_list0(tag(","), lex(arg_def))(inp)
+    separated_list0(tag(","), lex!(arg_def))(inp)
 }
 
 fn arg_def (inp: Span) -> IResult<Span, ArgDef> {
-    let (inp, name) = lex(id)(inp)?;
-    let (inp, _) = lex(char(':'))(inp)?;
-    let (inp, arg_type) = lex(data_type)(inp)?;
+    let (inp, name) = lex!(id)(inp)?;
+    let (inp, _) = lex!(char(':'))(inp)?;
+    let (inp, arg_type) = lex!(data_type)(inp)?;
     return Ok((inp, ArgDef{ name, argtype: arg_type }));
 }
 
 fn arg_list (inp: Span) -> IResult<Span, Vec<Expr>> {
-    delimited(char('('), separated_list0(lex(char(',')), expr), char(')'))(inp)
+    delimited(char('('), separated_list0(lex!(char(',')), expr), char(')'))(inp)
 }
 
 fn state_type(inp: Span) -> IResult<Span, StateType> {
-    let (out, ret) = alt((lex(tag("bool")), lex(tag("u8")), lex(tag("i8")), lex(tag("u32")), lex(tag("i32"))))(inp)?;
+    let (out, ret) = alt((lex!(tag("bool")), lex!(tag("u8")), lex!(tag("i8")), lex!(tag("u32")), lex!(tag("i32"))))(inp)?;
     match ret.fragment()
     {
      x if x == &"bool" => Ok((out, StateType::Bool)),
@@ -276,7 +297,7 @@ fn state_type(inp: Span) -> IResult<Span, StateType> {
 }
 
 fn data_type(inp: Span) -> IResult<Span, Type> {
-    let (out, ret) = alt((lex(tag("bool")), lex(tag("int")), lex(tag("num")), lex(tag("str"))))(inp)?;
+    let (out, ret) = alt((lex!(tag("bool")), lex!(tag("int")), lex!(tag("num")), lex!(tag("str"))))(inp)?;
     match ret.fragment()
     {
         x if x == &"bool" => Ok((out, Type::Bool)),
@@ -284,31 +305,26 @@ fn data_type(inp: Span) -> IResult<Span, Type> {
         x if x == &"num" => Ok((out, Type::Num)),
         x if x == &"str" => Ok((out, Type::Str)),
         _ => unreachable!()
-    
     }
 }
 
 
 fn expr(inp: Span) -> IResult<Span, Expr> {
-    alt((bin_ex, un_ex, func_call, var_call, literal_expr, timer_call))(inp)
+    alt((bin_ex, un_ex, value))(inp)
 }
 
 fn bin_ex(inp: Span) -> IResult<Span, Expr> {
-    let (out, binex) =
-        alt((
-        tuple((delimited(lex(char('(')), expr, lex(char(')'))), lex(bin_op), expr)),
-        tuple((expr, lex(bin_op), delimited(lex(char('(')), expr, char(')')))),
-        tuple((expr, lex(bin_op), expr))
-        ))(inp)?;
-    Ok((out, Expr{expr: UExpr::BinExpr{l: Box::new(binex.0), op: binex.1, r: Box::new(binex.2)}, exprtype: RefCell::from(None)}))
+    let (out, binex) = delimited(lex!(char('(')), tuple((bin_op, expr, expr)), lex!(char(')')))(inp)?;
+    Ok((out, Expr{expr: UExpr::BinExpr{op: binex.0, l: Box::new(binex.1), r: Box::new(binex.2)}, exprtype: RefCell::from(None)}))
 }
 
 fn un_ex(inp: Span) -> IResult<Span, Expr> {
-    let (out, unex) = alt((
-            tuple((lex(un_op), delimited(lex(char('(')), expr, lex(char(')'))))),
-            tuple((lex(un_op), expr))
-            ))(inp)?;
+    let (out, unex) = delimited(lex!(char('(')), tuple((un_op, expr)), lex!(char(')')))(inp)?;
     Ok((out, Expr{expr: UExpr::UnExpr{op: unex.0, expr: Box::new(unex.1)}, exprtype:RefCell::from(None)}))
+}
+
+fn value(inp: Span) -> IResult<Span, Expr> {
+    alt((func_call, timer_call, var_call, literal_expr))(inp)
 }
 
 fn func_call(inp: Span) -> IResult<Span, Expr> {
@@ -332,11 +348,26 @@ fn literal_expr(inp: Span) -> IResult<Span, Expr> {
 }
 
 fn un_op(inp: Span) -> IResult<Span, UnOp> {
-    tokenize(alt((tag("-"), tag("!"))))(inp) 
+    let (out, pos) = position(inp)?;
+    let (out, op) = alt((lex!(tag("!")), lex!(tag("~"))))(inp)?;
+    Ok((out, BinOp{content: op.fragment().to_string(), position: pos, file: op.extra}))
 }
 
-fn bin_op(inp: Span) -> IResult<Span, UnOp> {
-    tokenize(alt((tag("+"), tag("-"),tag("*"),tag("/"),tag("&"),tag("|"),tag("="),tag(">"),tag("<"))))(inp)
+
+fn bin_op(inp: Span) -> IResult<Span, BinOp> {
+    let (out, pos) = position(inp)?;
+    let (out, op) = 
+    alt((lex!(tag("+")),
+    lex!(tag("-")),
+    lex!(tag("*")),
+    lex!(tag("/")),
+    lex!(tag("==")),
+    lex!(tag("/=")),
+    lex!(tag(">")),
+    lex!(tag("<")),
+    lex!(tag(">=")),
+    lex!(tag("<="))))(out)?;
+    Ok((out, BinOp{content: op.fragment().to_string(), position: pos, file: op.extra})) 
 }
 
 fn literal(inp: Span) -> IResult<Span, Literal> {
@@ -349,7 +380,7 @@ fn literal(inp: Span) -> IResult<Span, Literal> {
     }
 
 fn bool_lit(inp: Span) -> IResult<Span, Literal> {
-    let (out, token) = tokenize( alt(( lex(tag("true")), lex(tag("false")) )))(inp)?;
+    let (out, token) = tokenize( alt(( lex!(tag("true")), lex!(tag("false")) )))(inp)?;
     Ok((out, Literal::BoolLiteral(token)))
 }
 
@@ -371,7 +402,7 @@ fn str_lit(inp: Span) -> IResult<Span, Literal> {
 }
 
 fn id (inp: Span) -> IResult<Span, Id> {
-    lex(id2)(inp)
+    lex!(id2)(inp)
 }
 
 fn id2 (inp: Span) -> IResult<Span, Id> {
@@ -384,26 +415,10 @@ fn id2 (inp: Span) -> IResult<Span, Id> {
 }
 
 fn semi (inp: Span) -> IResult<Span, char> {
-    lex(char(';'))(inp)
+    lex!(char(';'))(inp)
 }
-/**
- *  Equivalent of parsec's 'lexeme'
- *  Wraps a combinator to consume preceding and trailing whitespace
- *  used by every text-level parser used in this file except tags with required whitespace
- */
-fn lex<'a, F: 'a, O, E: ParseError<Span<'a>>>(inner: F) -> impl FnMut(Span<'a>) -> IResult<Span<'a>, O, E>
-    where 
-    F: Fn(Span) -> IResult<Span, O, E>,
-    {
-        delimited(multispace0, inner, multispace0)
-    }
-
-fn make_token<'a>(content: &str, position: Span<'a>, file: String) -> Token<'a> {
-    Token{content: String::from(content), position, file}
-}
-
-fn tokenize<'a, F: 'a, E: ParseError<Span<'a>>>(inner: F) -> impl FnMut(Span<'a>) -> IResult<Span<'a>, Token, E> 
-    where F: Fn(Span<'a>) -> IResult<Span<'a>, Span<'a>, E>
+fn tokenize<'a, F: 'a, E: ParseError<Span<'a>>>(mut inner: F) -> impl FnMut(Span<'a>) -> IResult<Span<'a>, Token, E> 
+    where F: FnMut(Span<'a>) -> IResult<Span<'a>, Span<'a>, E>
 {
     move |s| {
     let (s, pos) = position(s)?;
@@ -412,3 +427,6 @@ fn tokenize<'a, F: 'a, E: ParseError<Span<'a>>>(inner: F) -> impl FnMut(Span<'a>
     }
 }
 
+fn make_token<'a>(content: &str, position: Span<'a>, file: String) -> Token<'a> {
+    Token{content: String::from(content), position, file}
+}

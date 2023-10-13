@@ -33,7 +33,6 @@ fn gen_def<'a>(def: Def<'a>) -> String { //The unwrapped values here should neve
         Def::Func { name, args, rettype, expr, .. } => gen_func(name, args, expr),
         Def::Actor { name, members } => gen_actor(name, members),
         Def::Event { name } => gen_event(name),
-        Def::State { name, statetype } => gen_state(name, statetype),
         Def::StateEvent { name } => gen_stateevent(name),
         Def::Timer { name } => gen_timer(name),
         _ => panic!("gen_def passed invalid type")
@@ -102,7 +101,8 @@ fn gen_actor_def(def: Def) -> String {
         Def::Graphics { files } => files.iter().map(|f| indent1(2, format!(".addGraphic({})", f.str()))).fold(String::new(), |l, r| format!("{}\n{}", l, r)),
         Def::OnEvent { name, seq } => indent1(2, format!(".addEventListener(new EventListener(ProtoSequence(){}))", gen_seq(seq))),
         Def::Timer { name } => gen_timer(name),
-        Def::Actor { .. } | Def::Event { .. } | Def::State { .. } | Def::StateEvent { .. } => panic!("gen_actor_def given invalid def type")
+        Def::Param { name, paramtype, value } => unimplemented!(),
+        Def::Actor { .. } | Def::Event { .. } | Def::StateEvent { .. } => panic!("gen_actor_def given invalid def type")
     } 
 
 }
@@ -179,7 +179,7 @@ fn gen_assign(name: Id, val: Expr) -> String{
 
 fn gen_call(id: Id, args: Vec<Expr>, is_builtin: bool) -> String {
     if is_builtin {
-        builtin_sub(BUILTIN_SUBS.get(id.content.as_str()).unwrap(), args)
+        builtin_sub(BUILTIN_SUBS.get(id.content.as_str()).unwrap(), &args)
     } else {
         format!(".addNormalBlock({})", gen_block_lambda(format!("callingSequence.callProc(std::vector<std::string> {{{}}})",
             args.into_iter().map(|a| format!("BCIEValue({})", gen_expr(&a))).collect::<Vec<String>>().join(", ")
@@ -253,7 +253,7 @@ fn gen_elif(elif: ElseIf) -> String{
 }
 
 
-fn builtin_sub(substr: &String, args: Vec<Expr>) -> String {
+fn builtin_sub(substr: &String, args: &Vec<Expr>) -> String {
     let mut x: usize  = 0;
     let ch: Vec<char> = substr.chars().collect();
     let mut outstr = String::new();
@@ -288,22 +288,22 @@ fn gen_expr(expr: &Expr) -> String {
  * function arguments are accessed differently than normal
  */
 fn gen_expr1(expr: &Expr, funcargs: &Option<Vec<ArgDef>>) -> String {
-    match expr.expr {
+    match &expr.expr {
         UExpr::BinExpr { l, op, r } => format!("({}{}{})", gen_expr1(l.as_ref(), funcargs), gen_bop(op), gen_expr1(r.as_ref(), funcargs)),
         UExpr::UnExpr { op, expr } => format!("({}{})", gen_uop(op), gen_expr1(expr.as_ref(), funcargs)),
         UExpr::Value(val) => gen_val(val, expr.exprtype.borrow().unwrap(), funcargs)
     }
 }
 
-fn gen_bop(op: BinOp) -> String {
+fn gen_bop(op: &BinOp) -> String {
     BINARY_OP_SUB.get(op.content.as_str()).unwrap().to_string()
 }
 
-fn gen_uop(op: UnOp) -> String {
+fn gen_uop(op: &UnOp) -> String {
     UNARY_OP_SUB.get(op.content.as_str()).unwrap().to_string()
 }
 
-fn gen_val(val: Value, t: Type, funcargs: &Option<Vec<ArgDef>>) -> String {
+fn gen_val(val: &Value, t: Type, funcargs: &Option<Vec<ArgDef>>) -> String {
     match val {
         Value::Literal(l) => gen_lit(l),
         Value::VarCall(v) => gen_var_call(v, t, funcargs),
@@ -312,7 +312,7 @@ fn gen_val(val: Value, t: Type, funcargs: &Option<Vec<ArgDef>>) -> String {
     }
 }
 
-fn gen_func_call(id: Id, args: Vec<Expr>, is_builtin: bool) -> String {
+fn gen_func_call(id: &Id, args: &Vec<Expr>, is_builtin: bool) -> String {
     if is_builtin {
         builtin_sub(BUILTIN_SUBS.get(id.content.as_str()).unwrap(), args)
     } else {
@@ -321,7 +321,7 @@ fn gen_func_call(id: Id, args: Vec<Expr>, is_builtin: bool) -> String {
     }
 }
 
-fn gen_var_call(v: Id, t: Type, funcargs: &Option<Vec<ArgDef>>) -> String {
+fn gen_var_call(v: &Id, t: Type, funcargs: &Option<Vec<ArgDef>>) -> String {
     match funcargs {
         Some(f) => match f.iter().position(|f| f.name.content == v.content) {
             Some(v) => format!("args.at({})", v),
@@ -331,7 +331,7 @@ fn gen_var_call(v: Id, t: Type, funcargs: &Option<Vec<ArgDef>>) -> String {
     }
 }
 
-fn gen_lit(l: Literal) -> String {
+fn gen_lit(l: &Literal) -> String {
     l.str().to_string()
 }
 
