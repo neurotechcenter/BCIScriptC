@@ -1,14 +1,18 @@
-mod parse;
-mod ast;
-mod err;
-mod verify;
-mod builtins;
-mod generate;
-
-use std::io::Write;
+mod lex;
 
 
+
+#[allow(dead_code)] // remove after done
+                    //
 fn main() -> Result<(),Box<dyn std::error::Error>> {
+
+    let tokens = lex::lex("ab cb cd/*aaa*/");
+
+    tokens.for_each(|t| println!("{:?}", t));
+    
+    Ok(())
+
+    /*
     let files = std::env::args();
 
     let mut filebytes: Vec<(String, Vec<u8>)> = Vec::new();
@@ -31,4 +35,5 @@ fn main() -> Result<(),Box<dyn std::error::Error>> {
     let mut outfile = std::fs::File::create("AppInitPartial.cpp")?;
     outfile.write_all(program_out.as_bytes());
     Ok(())
+    */
 }
