@@ -96,11 +96,11 @@ pub enum Token<'input> {
     // Literals
     #[regex(r"[-]?[0-9]+", |l| l.slice())]
     Int(&'input str),
-    #[regex(r"[+-]?[0-9]+.[0-9]+", |l| l.slice())]
+    #[regex(r"[+-]?[0-9]+\.[0-9]+", |l| l.slice())]
     Num(&'input str),
     #[regex("true|false", |l| l.slice())]
     Bool(&'input str),
-    #[regex("\"(?:[^\"]|\\\\\")*\"", |l| l.slice())]
+    #[regex("\"(?:[^\"]|\\\\\")*\"", str_proc)]
     Str(&'input str), 
 
             
@@ -111,8 +111,8 @@ pub enum Token<'input> {
     #[regex(r"/\*([^*]|\*+[^*/])*\*+/", |_l| Skip)]
     Comment,
     
-    #[token(r"\n", newline)]
-    Newline,
+    #[token("\n", newline)]
+    Newline
 }
 
 
@@ -127,7 +127,17 @@ pub enum TokenKind {
 }
 
 
-fn newline<'input>(lex: &mut Lexer<'input, Token<'input>>) -> Skip {
-    lex.extras += 1;
+fn newline<'input>(l: &mut Lexer<'input, Token<'input>>) -> Skip {
+    l.extras += 1;
     return Skip;
+}
+
+/*
+ * Strips away delimiting quotation marks
+ */
+fn str_proc<'input>(l: &mut Lexer<'input, Token<'input>>) -> &'input str {
+    let len = l.slice().len();
+    let s: &'input str = l.slice();
+    let o: &'input str = &s[1..len-1];
+    return o;
 }

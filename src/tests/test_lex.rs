@@ -76,6 +76,24 @@ fn test_puctuation() {
     }
 }
 
+
+#[test]
+fn test_ws() {
+    let input = vec!{
+        " ",
+        "  ",
+        "\n",
+        "\n\n",
+        "\n \n",
+        "\n "
+    };
+
+    for s in input {
+        let mut l = lex(s);
+        assert_eq!(l.next(), None);
+    }
+}
+
 #[test]
 fn test_int() {
     let input = vec! {
@@ -101,7 +119,7 @@ fn test_float() {
     let input = vec! {
         ("0.0", "0.0"),
         ("1.2", "1.2"),
-        ("0.1", "0.8"),
+        ("0.8", "0.8"),
         (" 0.1", "0.1"),
         (" 2.812 ", "2.812"),
         ("22222.8", "22222.8"),
@@ -140,17 +158,54 @@ fn test_bool() {
     }
 }
 
+#[test]
+fn test_str() {
+    let input = vec!{
+        ("\"This is a string\"", "This is a string"),
+        (" \"This is a string with whitespace outside the delimiters\" ", "This is a string with whitespace outside the delimiters"),
+        ("\" This is a string with whitespace inside the delimiters \"", " This is a string with whitespace inside the delimiters "),
+        ("\"This is a string \n with a line break\"", "This is a string \n with a line break"),
+        ("\"This is a string \\n with an escaped line break\"", "This is a string \\n with an escaped line break"),
+        ("\"This is a string with \\\"escaped quotation marks\\\"\"", "This is a string with \\\"escaped quotation marks\\\"")
+    };
+
+    for (s, e) in input {
+        let mut l = lex(s);
+        assert_eq!(l.next(), Some(Ok(Token::Str(e))));
+        assert_eq!(l.next(), None);
+    }
+}
 
 #[test]
 fn test_comment() {
     let input = vec!{
         "/**/",
         "/***/",
-        "/* aaa */"
+        "/*Comment*/",
+        "/*Comment with whitespace*/",
+        "/*Comment\nwith\nnewlines*/"
     };
 
     for inp in input {
         let mut l = lex(inp);
         assert_eq!(l.next(), None, "Lexer failed to match comment with form '{}'", inp)
+    }
+}
+
+#[test]
+fn test_identifier() {
+    let input = vec! {
+        ("identifier", "identifier"),
+        ("identifier2", "identifier2"),
+        (" identifier ", "identifier"),
+        ("i_dentifie_r", "i_dentifie_r"),
+        ("__ID__", "__ID__"),
+        ("__2_E_", "__2_E_")
+    };
+
+    for (s, e) in input {
+        let mut l = lex(s);
+        assert_eq!(l.next(), Some(Ok(Token::Identifier(e))));
+        assert_eq!(l.next(), None);
     }
 }
