@@ -1,4 +1,5 @@
 mod lex;
+mod tests;
 
 
 
@@ -11,6 +12,7 @@ fn main() -> Result<(),Box<dyn std::error::Error>> {
     tokens.for_each(|t| println!("{:?}", t));
     
     Ok(())
+
 
     /*
     let files = std::env::args();

@@ -14,21 +14,7 @@ pub fn lex<'input>(inp: &'input str) -> Lexer<'input, Token<'input>> {
 #[logos(extras = usize)] //Holds current line number
 #[logos(skip r"[ \t\f\r]+")]
 pub enum Token<'input> {
-   Keyword(Keyword), 
-   Delimiter(Delimiter),
-   Punc(Punc),
-   Literal(Literal<'input>),
-   #[regex(r"[_a-zA-Z][_a-zA-Z0-9]*", |l| l.slice())] //Identifiers must be alphanumeric and begin with a letter
-   Identifier(&'input str),
-   /* Matches block comments formatted like this one. */
-   #[regex(r"/\*([^*]|\*+[^*/])*\*+/", |l| l.slice())]
-   Comment(&'input str),
-   #[token(r"\n", newline)]
-   Newline,
-}
-
-#[derive(Logos, Debug, PartialEq)]
-pub enum Keyword {
+   //Keywords
     #[token("actor")]
     Actor,
     #[token("when")]
@@ -60,11 +46,10 @@ pub enum Keyword {
     #[token("else")]
     Else,
     #[token("elif")]
-    Elif
-}
+    Elif,
 
-#[derive(Logos, Debug, PartialEq)]
-pub enum Delimiter {
+    //Delimiters
+
     #[token("(")]
     LParen,
     #[token(")")]
@@ -76,11 +61,9 @@ pub enum Delimiter {
     #[token("[")]
     LBrace,
     #[token("]")]
-    RBrace
-}
+    RBrace,
 
-#[derive(Logos, Debug, PartialEq)]
-pub enum Punc {
+    //Punctuation
     #[token(";")]
     Semi,
     #[token(",")]
@@ -108,11 +91,9 @@ pub enum Punc {
     #[token("==")]
     EqEq,
     #[token("%")]
-    Percent
-}
+    Percent,
 
-#[derive(Logos, Debug, PartialEq)]
-pub enum Literal<'input> {
+    // Literals
     #[regex(r"[-]?[0-9]+", |l| l.slice())]
     Int(&'input str),
     #[regex(r"[+-]?[0-9]+.[0-9]+", |l| l.slice())]
@@ -120,7 +101,29 @@ pub enum Literal<'input> {
     #[regex("true|false", |l| l.slice())]
     Bool(&'input str),
     #[regex("\"(?:[^\"]|\\\\\")*\"", |l| l.slice())]
-    Str(&'input str)
+    Str(&'input str), 
+
+            
+    #[regex(r"[_a-zA-Z][_a-zA-Z0-9]*", |l| l.slice())] //Identifiers must be alphanumeric and must not begin with a number
+    Identifier(&'input str),
+   
+    /* Matches block comments formatted like this one. */
+    #[regex(r"/\*([^*]|\*+[^*/])*\*+/", |_l| Skip)]
+    Comment,
+    
+    #[token(r"\n", newline)]
+    Newline,
+}
+
+
+pub enum TokenKind {
+    Keyword,
+    Delimiter,
+    Punc,
+    Literal,
+    Identifier,
+    Comment,
+    Other
 }
 
 
