@@ -48,6 +48,17 @@ pub enum Token<'input> {
     #[token("elif")]
     Elif,
 
+
+    //Types
+    #[token("int")]
+    IntType,
+    #[token("num")]
+    NumType,
+    #[token("bool")]
+    BoolType,
+    #[token("str")]
+    StrType,
+
     //Delimiters
 
     #[token("(")]
@@ -64,6 +75,8 @@ pub enum Token<'input> {
     RBrace,
 
     //Punctuation
+    #[token(":")]
+    Colon,
     #[token(";")]
     Semi,
     #[token(",")]
@@ -92,6 +105,12 @@ pub enum Token<'input> {
     EqEq,
     #[token("%")]
     Percent,
+    #[token("&")]
+    And,
+    #[token("|")]
+    Or,
+    #[token("^")]
+    Xor,
 
     // Literals
     #[regex(r"[-]?[0-9]+", |l| l.slice())]
